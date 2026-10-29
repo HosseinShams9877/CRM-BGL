@@ -1,0 +1,1478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ Business Units ============
+model BusinessUnit {
+  id          String   @id @default("production")
+  name        String
+  label       String?
+  isActive    Boolean  @default(true)
+  features    String   @default("{}") // JSON: {productionWorkspace: bool, inventoryMode: 'serial'|'quantity'}
+  userIds     String   @default("[]") // JSON: array of user IDs allowed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // v2.25.0 — numeric CAS token for optimistic concurrency (replaces the
+  // 1000ms updatedAt tolerance on update-business-unit)
+  version     Int      @default(1)
+  centers     Center[]
+  activities  Activity[]
+  salesDocuments SalesDocument[]
+  serviceTickets ServiceTicket[]
+  users       User[]
+}
+
+// ============ Company (Holding Structure) ============
+model Company {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  type        String   // holding, b2b, b2c
+  color       String
+  accentColor String
+  logo        String?
+  // v2.31.8 — letterhead tagline printed under the issuing-company name on
+  // the A4 invoice (e.g. آریا مدیکال → «مرکز تجهیزات پزشکی – واجد شرایط ارز
+  // دولتی»). Nullable: companies without a tagline print no subtitle line.
+  tagline     String?
+  // v2.31.9 — seller identity for the Lian proforma format (پیش‌فاکتور
+  // فروش): legal identity + contact block printed in «مشخصات فروشنده» and
+  // pre-filled read-only in the data-entry form. Nullable: companies
+  // without a profile print dotted placeholders (legacy behavior).
+  nationalId          String?  // شناسه ملی / کد ملی شرکت
+  address             String?  // نشانی ثبت‌شده
+  phone               String?  // تلفن ثابت
+  postalCode          String?  // کد پستی
+  // v2.41.0 (r56 port) — sender (issuer) two-address profile: registered ONCE in
+  // company settings and auto-pulled into every proforma/invoice print
+  // (user round 56: «ثبت اطلاعات شرکت یک‌بار، استفاده و فراخوانی خودکار
+  // در تمام پیش‌فاکتورها و فاکتورها»). Both get their own labelled line
+  // in the «مشخصات فروشنده» box; when only one is filled, only that one
+  // prints (no dotted duplication).
+  headOfficeAddress   String?  // نشانی دفتر مرکزی
+  factoryAddress      String?  // نشانی کارخانه / محل تولید
+  // v2.31.9 — bank account printed in the «اطلاعات حساب» box of the
+  // proforma/invoice footer strip (بانک / نام دارنده / شماره حساب / شبا).
+  bankName            String?
+  bankAccountHolder   String?
+  bankAccountNumber   String?
+  bankSheba           String?
+  // v2.48.0 — company-level printed terms/note (شرایط و یادداشت چاپی
+  // شرکت): registered ONCE here in company settings and auto-pulled into
+  // the «توضیحات / شرایط» box of EVERY proforma/invoice print. Each line
+  // (newline-separated) prints as its own bullet. NULL/empty → the built-in
+  // default terms of the print template (pre-v2.48.0 behavior, unchanged).
+  // LIVE profile data (like the rest of the sender profile): a brand/terms
+  // edit immediately updates every future print — by design, per user
+  // round 73: «با تغییر برند، همه پیش‌فاکتورها خودکار به‌روز شوند».
+  proformaNote        String?
+  // v2.52.0 — per-company A4 print template (تفکیک صفحه‌آرایی چاپ):
+  // the visual graphic language of the proforma/invoice sheet,
+  // chosen per company in settings. null/'bgl' → the standard group
+  // design (v2.49.0 Emerald/Teal + Deep-Navy); 'lian' → the sea-green
+  // + dark-purple Lian reference (واحد بازرگانی). See
+  // src/lib/print-templates.ts (single source of truth, pure).
+  printTemplate       String?
+  // v2.54.0 — per-company website printed in the A4 footer contact
+  // band under the globe icon (the Arya reference prints
+  // www.ariamedical.ir while the group default stays www.BGL.ir).
+  // null → the global app.website setting (exact pre-v2.54.0
+  // behavior for every company without its own site).
+  website             String?
+  // v2.35.0 - ISOLATED company (شرکت مستقل): fully independent of the
+  // holding group. Its centers, documents, inventory, products and
+  // followups are NEVER merged into any group aggregate view (holding
+  // dashboards, reports, stats, trends). Only users explicitly assigned
+  // to an isolated company see its data; admins are excluded by design.
+  // First isolated company: یاس طب (yasteb).
+  isIsolated  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users             User[]
+  centers           Center[]
+  periodicFollowups PeriodicFollowup[]
+  salesReports      SalesReport[]
+  // v2.25.0 — direct company ownership (tenant isolation) on the three
+  // models that previously inferred ownership only through relations
+  salesDocuments    SalesDocument[]            @relation("SalesDocumentCompany")
+  inventorySerials  InventorySerial[]          @relation("InventorySerialCompany")
+  purchaseRequests  ProductionPurchaseRequest[] @relation("PurchaseRequestCompany")
+  hesabfaConnection HesabfaConnection?
+  // v2.35.0 — company-owned catalog rows (isolated companies).
+  products          Product[]                  @relation("ProductCompany")
+  // v2.43.0 — SMS send log (per-company audit of every outgoing SMS)
+  smsLogs           SmsLog[]                    @relation("SmsLogCompany")
+}
+
+// ════════════════════════════════════════════════════════════
+// v2.43.0 — SMS LOG
+// One row per SEND ATTEMPT (sent OR failed): audit + daily-limit
+// accounting + user-visible history. Provider-agnostic columns;
+// secrets (api key/password) are NEVER written here — only the
+// provider id and the provider-side message id.
+// ════════════════════════════════════════════════════════════
+model SmsLog {
+  id          String   @id @default(cuid())
+  phone       String   // normalized 09xxxxxxxxx
+  text        String
+  provider    String   // kavenegar | melipayamak | sms_ir
+  status      String   // 'sent' | 'failed'
+  messageId   String?  // provider-side id for sent rows
+  error       String?  // Persian, user-facing failure reason
+  centerName  String?  // context: which center the SMS was about
+  contextType String   @default("manual") // manual | collection | followup | test
+  company     Company? @relation("SmsLogCompany", fields: [companyId], references: [id])
+  companyId   String?
+  user        User?    @relation("SmsLogUser", fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ============ Users ============
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  displayName  String
+  passwordHash String
+  role         String   @default("standard") // base system role: admin, finance, production, standard
+  roleLabel    String   @default("کاربر عادی")
+  jobTitle     String?  // job-title key from the access registry (drives sidebar menus)
+  province     String?
+  isActive     Boolean  @default(true)
+  companyIds   String   @default("[]") // JSON array of company slugs: ["bazargani","aria"]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  businessUnitId String @default("production")
+  businessUnit   BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  companyId       String?
+  company         Company?    @relation(fields: [companyId], references: [id])
+  // v2.41.0 (r57 port) — Sales Territory & Data Permission Management
+  // One-time assignment by an admin; every DB query for standard-role
+  // users is automatically province/center-scoped (see lib/territory-scope).
+  //   country   → no restriction (legacy default; only admins/holding
+  //               managers may deliberately keep an expert unrestricted)
+  //   provinces → only centers whose province ∈ territoryProvinces
+  //   centers   → only the explicitly listed centers (special cases)
+  territoryMode       String    @default("country")
+  territoryProvinces  String    @default("[]") // JSON array of province names
+  territoryCenterIds  String    @default("[]") // JSON array of center ids
+  territoryUpdatedAt  DateTime?
+  activities       Activity[] @relation("AssignedActivity")
+  createdActivities Activity[] @relation("CreatorActivity")
+  updatedActivities Activity[] @relation("UpdaterActivity")
+  salesDocuments    SalesDocument[] @relation("DocumentCreator")
+  updatedDocuments  SalesDocument[] @relation("UpdaterDocument")
+  approvedDocuments SalesDocument[] @relation("ApproverDocument")
+  issuedInvoices   IssuedInvoice[]
+  createdShipments SalesShipment[] @relation("ShipmentCreator")
+  createdCartonLabels CartonLabel[] @relation("CartonLabelCreator")
+  notes            Note[]
+  loginAttempts    LoginAttempt[]
+  // v2.27.0 — AI Sales Intelligence
+  aiCallRecordings AiCallRecording[]           @relation("AiCallRep")
+  aiCoachInsights  AiCoachInsight[]
+  aiNextActionsAssigned AiNextAction[]         @relation("AiNextActionAssignee")
+  // v2.43.0 — SMS send log (who sent what, when)
+  smsLogs          SmsLog[]                    @relation("SmsLogUser")
+  @@index([businessUnitId])
+  @@index([companyId])
+}
+
+// ============ Centers (CRM Core) ============
+// customerType: organization (سازمانی) | end_user (مشتری نهایی/شخص حقیقی)
+// segment: B2B دسته‌بندی — government (دولتی) | private (خصوصی) | partner (همکار/نماینده)
+// paymentBehavior: خوش‌حسابی — good_payer | bad_payer | unknown
+model Center {
+  id              String   @id @default(cuid())
+  businessUnitId  String   @default("production")
+  companyId       String   @default("bazargani")
+  name            String
+  customerType    String   @default("organization") // organization, end_user
+  segment         String   @default("") // government, private, partner
+  mobile          String?  // موبایل شخص حقیقی / رابط
+  loyaltyPoints   Int      @default(0) // امتیاز باشگاه مشتریان
+  creditScore     Int      @default(0) // امتیاز اعتباری (0-100)
+  paymentBehavior String   @default("unknown") // good_payer, bad_payer, unknown
+  commissionPercent Float  @default(0) // درصد کمیسیون همکار/نماینده
+   province        String?
+  city            String?
+  address         String?
+  phone           String?
+  // v2.31.9 — buyer identity block (مشخصات خریدار) for the Lian proforma
+  // format: pre-filled into the data-entry form and snapshotted onto each
+  // document at creation. Nullable across the board — legacy centers keep
+  // printing dotted placeholders until the master data is filled in.
+  nationalId      String?  // شناسه ملی / کد ملی خریدار
+  economicCode    String?  // کد اقتصادی خریدار
+  postalCode      String?  // کد پستی خریدار
+  contactName     String?  // کارشناس خرید (نام رابط طرف خریدار)
+  status          String   @default("active") // active, archived
+  isArchived      Boolean  @default(false)
+  customFields    String   @default("{}") // JSON
+  tags            String   @default("[]") // JSON array
+  searchKey       String?
+  createdBy       String?
+  updatedBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  // v2.25.0 — numeric CAS token (center edit dialog / favorite toggle)
+  version         Int      @default(1)
+  businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  company         Company     @relation(fields: [companyId], references: [id])
+  accounts        CenterAccount[]
+  activities      Activity[]
+  extraContacts   CenterContact[]
+  salesDocuments  SalesDocument[]
+  periodicFollowups PeriodicFollowup[]
+  loyaltyTransactions LoyaltyTransaction[]
+  serviceTickets  ServiceTicket[]
+  // v2.27.0 — AI Sales Intelligence
+  aiCallRecordings AiCallRecording[]
+  aiMemories       AiCustomerMemory[]
+  aiNextActions    AiNextAction[]
+  @@index([businessUnitId, status])
+  @@index([businessUnitId, isArchived])
+  @@index([province])
+  @@index([companyId])
+  // v2.58.0 (audit 85-c) — center list default sort.
+  @@index([updatedAt])
+}
+
+// ============ Center Accounts (Financial) ============
+model CenterAccount {
+  id          String   @id @default(cuid())
+  centerId    String   @unique  // 1:1 — یک حساب مالی به‌ازای هر مرکز
+  totalSales  Float    @default(0)
+  totalPaid   Float    @default(0)
+  balance     Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  center      Center   @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  invoices    IssuedInvoice[]
+}
+
+// ============ Center Extra Contacts ============
+// isAgent: آیا این شخص «رابط» شرکت است؟ (دسترسی به پروفایل رگ خواب)
+// personality: JSON ساختاریافته رگ خواب { traits: [], communication: '', interests: '', sensitivities: '', notes: '' }
+model CenterContact {
+  id          String   @id @default(cuid())
+  centerId    String
+  title       String
+  person      String?
+  phone       String
+  notes       String?
+  isAgent     Boolean  @default(false)
+  personality String   @default("{}") // JSON — رگ خواب
+  createdBy   String?
+  createdByName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  // v2.25.0 — numeric CAS token (update-contact)
+  version     Int      @default(1)
+  center      Center   @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  profileNotes ContactProfileNote[]
+  // v2.27.0 — AI Sales Intelligence
+  aiCallRecordings AiCallRecording[]
+  aiMemories       AiCustomerMemory[]
+  aiNextActions    AiNextAction[]
+  @@index([centerId])
+}
+
+// ============ Contact Profile Notes (رگ خواب) ============
+// ثبت زمان‌دار مشاهدات کاربران دربارهٔ شخصیت فرد رابط
+model ContactProfileNote {
+  id            String   @id @default(cuid())
+  contactId     String
+  category      String   @default("general") // trait, interest, sensitivity, communication, general
+  content       String
+  createdBy     String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  contact       CenterContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  @@index([contactId])
+}
+
+// ============ Activities ============
+model Activity {
+  id              String   @id @default(cuid())
+  businessUnitId  String   @default("production")
+  centerId        String?
+  title           String
+  description     String   @default("")
+  activityDate    DateTime
+  activityTime    String   @default("")
+  status          String   @default("pending") // pending, done, cancelled
+  completedAt     DateTime?
+  isPhoneCall     Boolean  @default(false)
+  isOnsiteVisit   Boolean  @default(false) // ویزیت حضوری (مهاجرت از سیستم قبلی)
+  isUnansweredCall Boolean @default(false) // تماس بی‌پاسخ (مهاجرت از سیستم قبلی)
+  assignedTo      String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  center          Center?   @relation(fields: [centerId], references: [id])
+  assignedUser    User?     @relation("AssignedActivity", fields: [assignedTo], references: [id])
+  creator         User?     @relation("CreatorActivity", fields: [createdById], references: [id])
+  updater         User?     @relation("UpdaterActivity", fields: [updatedById], references: [id])
+  // v2.27.0 — AI Sales Intelligence (a processed call recording may link
+  // back to the Activity that logged the call)
+  aiCallRecordings AiCallRecording[]
+  // v2.34.7 — Quick-activity voice note: the recorded audio (File row,
+  // "ActivityVoiceNote") plus its STT transcription text. The transcript may
+  // be produced later than the audio itself (transcribe-later action), so it
+  // lives on the Activity rather than on the upload request.
+  voiceNoteFileId String?
+  voiceTranscript  String   @default("")
+  voiceNoteFile    File?    @relation("ActivityVoiceNote", fields: [voiceNoteFileId], references: [id])
+  // v2.34.9 — Quick-activity product tags: which catalog products the
+  // activity was about (optional checkbox picker, round 56). JSON snapshot
+  // [{id,name}] — a product renamed or deleted later never rewrites history
+  // (the same creation-time snapshot semantics as buyerSnapshot).
+  products         String   @default("[]")
+  @@index([assignedTo, status])
+  @@index([centerId])
+  @@index([activityDate])
+  @@index([businessUnitId, activityDate])
+  // v2.58.0 (audit 85-c) — calls screen hot path (isPhoneCall filter +
+  // activityDate sort over 12.7k rows) and the mineOnly filter.
+  @@index([businessUnitId, isPhoneCall, activityDate])
+  @@index([createdById])
+}
+
+// ============ Products ============
+model Product {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  price     Float    @default(0)
+  unit      String   @default("عدد")
+  active    Boolean  @default(true)
+  source    String   @default("دستی")
+  category  String   @default("")   // دسته‌بندی محصول
+  specs     String   @default("{}") // JSON: مشخصات فنی {کلید: مقدار}
+  warrantyMonths Int @default(12)  // ماه‌های گارانتی (خدمات پس از فروش)
+  // v2.31.9 — کد IRC (شماره ثبت / پروانه ورود تجهیزات پزشکی) printed
+  // under the item name on the Lian proforma format alongside کد کالا.
+  // Nullable: non-medical products carry no IRC code.
+  ircCode   String?
+  // v2.35.0 — catalog ownership. NULL = shared master-data row (the
+  // historical catalog, visible to every group company as before); a set
+  // companyId = private row of ONE company. Today only ISOLATED companies
+  // stamp rows (their users see a strictly private catalog), so the group
+  // behavior is byte-identical to before and isolated rows are invisible
+  // outside their company.
+  companyId String?
+  company   Company? @relation("ProductCompany", fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // v2.25.0 — numeric CAS token (product form)
+  version   Int      @default(1)
+  salesDocumentItems SalesDocumentItem[]
+
+  @@index([companyId])
+}
+
+// ============ Sales Documents ============
+model SalesDocument {
+  id              String   @id @default(cuid())
+  businessUnitId  String   @default("production")
+  centerId        String?
+  documentNumber  String?
+  documentType    String   @default("proforma") // proforma, invoice, return
+  status          String   @default("draft") // draft, pending_approval, approved, rejected, cancelled
+  totalAmount     Float    @default(0)
+  discountAmount  Float    @default(0)
+  taxAmount       Float    @default(0)
+  finalAmount     Float    @default(0)
+  description     String   @default("")
+  issuedAt        DateTime?
+  approvedById    String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  // v2.25.0 — numeric CAS token: exact compare against the client's copy,
+  // replacing the 1000ms updatedAt tolerance (two writers inside one
+  // second could both pass that check and silently drop an edit).
+  version         Int      @default(1)
+  // v2.25.0 — direct company ownership for tenant isolation. Nullable:
+  // rows without a center carry no company data (visible to every scoped
+  // user, mirroring the v2.12 optional-center semantics); rows WITH a
+  // center are restricted to that company's users. Backfilled from
+  // Center.companyId by scripts/backfill-v2250.ts.
+  companyId       String?
+  // v2.25.0 — definitive proforma→invoice derivation link. Replaces the
+  // `description contains documentNumber` TEXT SEARCH the cancel flow
+  // used (which could sweep an unrelated document whose description
+  // merely mentioned the number). Legacy rows are backfilled; the cancel
+  // flow also keeps an exact-string legacy fallback for un-migrated rows.
+  sourceDocumentId String?
+  // v2.31.9 — Lian proforma format (پیش‌فاکتور فروش): header payment
+  // terms + the sales-expert contact block printed in «مشخصات فروشنده».
+  // Nullable: legacy rows print without these lines.
+  paymentTerms     String?  // شرایط پرداخت: نقدی / اعتباری / چک / توافقی
+  salesExpertName  String?  // کارشناس فروش (defaults to the creator's display name)
+  salesExpertMobile String? // موبایل کارشناس فروش
+  // v2.31.9 — buyer identity AS ENTERED/CONFIRMED in the data-entry form
+  // (JSON snapshot: name, nationalId, economicCode, address, city,
+  // province, phone, postalCode, contactName). A document is a legal
+  // snapshot: later edits to the center master data must NOT rewrite an
+  // already-issued proforma. Empty string = no snapshot (legacy rows fall
+  // back to live center data at print time).
+  // v2.42.0 — انتخابگر نشانی فرستنده (sender address selector): the
+  // per-document print choice captured by the proforma form. 'main_office'
+  // prints ONLY the registered head-office address in «مشخصات فروشنده»,
+  // 'factory' prints ONLY the factory address; null keeps the v2.35.0
+  // two-address default (both → each under its own label, one → alone,
+  // legacy → unlabelled). Snapshot semantics like buyerSnapshot: a later
+  // company-settings edit must NOT rewrite an already-issued document's
+  // chosen sender address type.
+  senderAddressType String?
+  buyerSnapshot    String   @default("")
+  // v2.45.0 — سنجاق دستی مرحلهٔ کاریز (drag & drop). When the user drags a
+  // card to another column with the mouse, the chosen stage is pinned here.
+  // NULL = no pin → the board stage stays DERIVED from the live document
+  // status + shipments (the pre-v2.45.0 behavior, unchanged for every
+  // legacy row). Real workflow events (submit-approval / approve / reject /
+  // cancel / shipment create / shipment return / shipment delete) CLEAR the
+  // pin so the card can never contradict the underlying reality for long.
+  pipelineStage    String?
+  businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  center          Center?   @relation(fields: [centerId], references: [id])
+  company         Company?  @relation("SalesDocumentCompany", fields: [companyId], references: [id])
+  sourceDocument  SalesDocument?  @relation("SalesDocumentDerivation", fields: [sourceDocumentId], references: [id])
+  derivedDocuments SalesDocument[] @relation("SalesDocumentDerivation")
+  creator         User?     @relation("DocumentCreator", fields: [createdById], references: [id])
+  updater         User?     @relation("UpdaterDocument", fields: [updatedById], references: [id])
+  approver        User?     @relation("ApproverDocument", fields: [approvedById], references: [id])
+  items           SalesDocumentItem[]
+  approvals       SalesDocumentApproval[]
+  financeRecords  SalesDocumentFinance[]
+  logs            SalesDocumentLog[]
+  versions        SalesDocumentVersion[]
+  issuedInvoices  IssuedInvoice[]
+  shipments       SalesShipment[]
+  @@index([businessUnitId, status])
+  @@index([centerId])
+  @@index([companyId])
+  @@index([sourceDocumentId])
+  @@index([documentNumber])
+  @@index([createdAt])
+  // v2.58.0 (audit 85-c) — report/funnel hot paths; a duplicate financial
+  // document number is a business-level bug (tax authority), now blocked
+  // at the storage layer too.
+  @@unique([documentNumber])
+  @@index([documentType, status])
+  @@index([issuedAt])
+}
+
+// ============ Sales Document Items ============
+model SalesDocumentItem {
+  id               String   @id @default(cuid())
+  salesDocumentId  String
+  productId        String?
+  productName      String
+  quantity         Float    @default(1)
+ unitPrice        Float    @default(0)
+  totalPrice       Float    @default(0)
+  discount         Float    @default(0)
+  description      String   @default("")
+  // v2.31.9 — واحد column captured by the data-entry form (عدد / بسته /
+  // کارتن / ...). Empty falls back to the linked product's unit, then to
+  // «عدد» at print time — legacy rows are unaffected.
+  unit             String?
+  createdAt        DateTime @default(now())
+  salesDocument    SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  product          Product?      @relation(fields: [productId], references: [id])
+  @@index([salesDocumentId])
+}
+
+// ============ Sales Document Approvals ============
+model SalesDocumentApproval {
+  id               String   @id @default(cuid())
+  salesDocumentId  String
+  userId           String
+  action           String   // approved, rejected
+  comment          String   @default("")
+  createdAt        DateTime @default(now())
+  salesDocument    SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  @@index([salesDocumentId])
+}
+
+// ============ Sales Document Finance ============
+model SalesDocumentFinance {
+  id               String   @id @default(cuid())
+  salesDocumentId  String
+  paymentMethod    String?
+  paymentDate      DateTime?
+  amount           Float    @default(0)
+  referenceNumber  String?
+  description      String   @default("")
+  // v2.58.4 (user issue 1) — WHO registered the payment (payment-creator
+  // ownership on the cartable). Nullable: legacy rows keep NULL (creator
+  // unknown — fail-closed for finance_write-only users). No FK, mirroring
+  // SalesDocumentLog.userId.
+  createdById      String?
+  createdAt        DateTime @default(now())
+  salesDocument    SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  @@index([salesDocumentId])
+  @@index([createdById])
+}
+
+// ============ Sales Document Logs ============
+model SalesDocumentLog {
+  id               String   @id @default(cuid())
+  salesDocumentId  String
+  userId           String
+  action           String
+  details          String   @default("{}") // JSON
+  createdAt        DateTime @default(now())
+  salesDocument    SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  @@index([salesDocumentId])
+}
+
+// ============ Sales Document Versions ============
+model SalesDocumentVersion {
+  id               String   @id @default(cuid())
+  salesDocumentId  String
+  versionNumber    Int
+  data             String   // JSON snapshot
+  createdById      String?
+  createdAt        DateTime @default(now())
+  salesDocument    SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  @@index([salesDocumentId])
+}
+
+// ============ Sales Shipments (ارسال بار) ============
+// v2.17.0 — real dispatch records. A shipment belongs to exactly one sales
+// document (an approved invoice). Registering a shipment is what moves the
+// document into the «ارسال بار» column of the pipeline — v2.16.0 left that
+// column honestly empty because no send was ever recorded anywhere.
+// status: preparing (در حال آماده‌سازی) | ready (آماده بارگیری) |
+//         in-transit (در راه) | delivered (تحویل داده) | returned (برگشتی)
+model SalesShipment {
+  id              String    @id @default(cuid())
+  shipmentNumber  String?
+  salesDocumentId String
+  status          String    @default("preparing")
+  carrierName     String    @default("")
+  trackingCode    String    @default("")
+  itemsSummary    String    @default("")
+  weight          String    @default("")
+  notes           String    @default("")
+  dispatchedAt    DateTime? // when the parcel actually left the warehouse
+  deliveredAt     DateTime? // when the customer received it
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  salesDocument   SalesDocument @relation(fields: [salesDocumentId], references: [id], onDelete: Cascade)
+  creator         User?        @relation("ShipmentCreator", fields: [createdById], references: [id])
+  // v2.46.0 (r71) — carton label serials issued for this dispatch
+  // (شماره سریال برچسب کارتون — one printed A5 sheet per carton)
+  cartonLabels    CartonLabel[]
+  @@index([salesDocumentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============ Carton Label Serials (شماره سریال برچسب) ============
+// v2.46.0 (round 71) — user request: «شماره سریال هم صادر شود».
+// Every سند ارسال (dispatch document / carton label) is issued with
+// UNIQUE serial numbers, one per carton: LBL-YYMMDD-NNNN. Serials are
+// the paper trail — issuing more APPENDS (indices continue), nothing
+// is ever deleted while the shipment exists (cascades with it).
+model CartonLabel {
+  id              String   @id @default(cuid())
+  /** Unique human/scanner-readable serial: LBL-YYMMDD-NNNN. */
+  serial          String   @unique
+  shipmentId      String
+  /** 1-based position of THIS carton within the shipment. */
+  cartonIndex     Int      @default(1)
+  /** «کارتون ۱ از N» — total cartons of the print run (kept in sync
+   *  when the desk increases the count; never shrinks). */
+  cartonTotal     Int      @default(1)
+  salesDocumentId String
+  createdById     String?
+  createdAt       DateTime @default(now())
+  shipment        SalesShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  creator         User?         @relation("CartonLabelCreator", fields: [createdById], references: [id])
+  @@index([shipmentId])
+  @@index([salesDocumentId])
+  @@index([createdAt])
+}
+
+// ============ Issued Invoices (Billing) ============
+model IssuedInvoice {
+  id              String   @id @default(cuid())
+  invoiceNumber   String?
+  centerAccountId String?
+  /** v2.13.0 — definitive link to the sales document that produced this
+   * invoice (proforma-derived, directly-approved, or quick-sale). Nullable
+   * for hand-created invoices in the billing screen. Payments registered on
+   * the sales document sync to THIS row via this link — never by guessing. */
+  salesDocumentId String?
+  status          String   @default("issued") // issued, paid, void
+  totalAmount     Float    @default(0)
+  paidAmount      Float    @default(0)
+  issuedAt        DateTime?
+  dueDate         DateTime?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  centerAccount   CenterAccount? @relation(fields: [centerAccountId], references: [id])
+  creator         User?     @relation(fields: [createdById], references: [id])
+  salesDocument   SalesDocument? @relation(fields: [salesDocumentId], references: [id], onDelete: SetNull)
+  items           IssuedInvoiceItem[]
+  payments        IssuedInvoicePayment[]
+  @@index([centerAccountId])
+  @@index([salesDocumentId])
+  @@index([status])
+  // v2.58.0 (audit 85-c) — overdue query (status=issued, dueDate < now)
+  // and invoice-number uniqueness (finance-sync number-identity fallback).
+  @@unique([invoiceNumber])
+  @@index([status, dueDate])
+}
+
+// ============ Issued Invoice Items ============
+model IssuedInvoiceItem {
+  id              String  @id @default(cuid())
+  issuedInvoiceId String
+  description     String
+  quantity        Float   @default(1)
+  unitPrice       Float   @default(0)
+  totalPrice      Float   @default(0)
+  issuedInvoice   IssuedInvoice @relation(fields: [issuedInvoiceId], references: [id], onDelete: Cascade)
+  @@index([issuedInvoiceId])
+}
+
+// ============ Issued Invoice Payments ============
+model IssuedInvoicePayment {
+  id                String   @id @default(cuid())
+  issuedInvoiceId   String
+  amount            Float    @default(0)
+  paymentDate       DateTime?
+  referenceNumber   String?
+  description       String   @default("")
+  createdAt         DateTime @default(now())
+  issuedInvoice     IssuedInvoice @relation(fields: [issuedInvoiceId], references: [id], onDelete: Cascade)
+  @@index([issuedInvoiceId])
+}
+
+// v2.58.1 (round 86, audit F2) — client-supplied idempotency keys for
+// invoice-payment registration. UNIQUE(userId, idemKey) is the race-safe
+// guarantee: two concurrent submissions carrying the same key cannot both
+// insert; the loser re-reads the winner's stored result and replays it
+// byte-identically. A second submission of the same key with a DIFFERENT
+// payload is rejected (requestHash mismatch → 409). Deliberately has no
+// FK relations — it is an append-only request log, not business data.
+model IssuedInvoicePaymentIdempotency {
+  id          String   @id @default(cuid())
+  userId      String
+  idemKey     String
+  requestHash String
+  invoiceId   String
+  paymentId   String   @unique
+  resultJson  String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, idemKey])
+  @@index([invoiceId])
+}
+
+// ── v2.58.4 (external audit F04) — idempotency for sales-side payments ──
+// Same contract as IssuedInvoicePaymentIdempotency, for the
+// SalesDocumentFinance write paths (/api/sales-documents add-payment and
+// /api/accounting-cartable add-payment): same key + same payload → the
+// stored result replays byte-identically (ONE receipt, ever); same key +
+// different payload → 409. The key namespace is per-user. A payment whose
+// audit-log write fails never commits (the log is INSIDE the transaction),
+// so a client retry can no longer double-charge the document.
+model SalesPaymentIdempotency {
+  id              String   @id @default(cuid())
+  userId          String
+  idemKey         String
+  requestHash     String
+  salesDocumentId String
+  financeRecordId String?  @unique
+  resultJson      String
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, idemKey])
+  @@index([salesDocumentId])
+}
+
+// ============ Inventory Serials ============
+model InventorySerial {
+  id          String   @id @default(cuid())
+  productCode String?
+  serialNumber String   @unique
+  status      String   @default("available") // available, sold, returned, defective
+  centerId    String?
+  // v2.25.0 — direct company ownership (tenant isolation). Nullable:
+  // warehouse stock not yet attached to a center stays company-neutral
+  // and visible to every scoped user (same semantics as centerId null).
+  companyId   String?
+  notes       String   @default("")
+  soldAt      DateTime?
+  createdById String?
+  // ═══ v2.57.0 (round 83) — Hesabfa serial provenance ═══
+  // source: 'internal' (registered in CRM) | 'hesabfa' (detected in a
+  // synced Hesabfa invoice). Operational statuses (demo / reserved /
+  // expert) are NEVER overwritten by a re-sync — sync only records.
+  source               String    @default("internal")
+  hesabfaItemCode      String    @default("")
+  hesabfaInvoiceNumber String    @default("")
+  hesabfaInvoiceId     Int       @default(0)
+  hesabfaContactCode   String    @default("")
+  // reservation bookkeeping (status 'reserved'): who holds it and until
+  // when — an expired reservation frees the serial for sale again.
+  reservedById         String?
+  reservedAt           DateTime?
+  reservationExpiresAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company       Company? @relation("InventorySerialCompany", fields: [companyId], references: [id])
+  history      InventorySerialHistory[]
+  serviceTickets ServiceTicket[]
+  @@index([centerId])
+  @@index([companyId])
+  @@index([status])
+  @@index([productCode])
+  @@index([source, hesabfaInvoiceNumber])
+  // v2.58.0 (audit 85-c) — serials view default sort.
+  @@index([updatedAt])
+}
+
+// ============ After-Sales Service Tickets (خدمات پس از فروش) ============
+// type: repair (تعمیر) | maintenance (سرویس دوره‌ای) | installation (نصب) | training (آموزش) | replacement (تعویض)
+// status: open | in_progress | waiting_parts | resolved | closed | rejected
+// warrantyStatus: in_warranty (در گارانتی) | out_of_warranty (خارج از گارانتی) | unknown
+model ServiceTicket {
+  id            String   @id @default(cuid())
+  businessUnitId String   @default("production") // جداسازی مستأجر (واحد کسب‌وکار)
+  ticketNumber  String?
+  serialNumber  String?  // سریال دستگاه (پیوند با InventorySerial)
+  productCode   String?  // کد محصول
+  centerId      String?
+  contactName   String?  // نام فرد اعلام‌کننده
+  contactPhone  String?  // تلفن تماس
+  type          String   @default("repair")
+  status        String   @default("open")
+  priority      String   @default("normal") // low, normal, high, critical
+  warrantyStatus String  @default("unknown")
+  warrantyUntil DateTime? // محاسبه: soldAt + warrantyMonths محصول
+  issue         String   @default("") // شرح مشکل
+  resolution    String   @default("") // شرح اقدام
+  cost          Float    @default(0) // هزینهٔ خدمات
+  assignedTo    String?  // کارشناس مسئول
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  // v2.25.0 — numeric CAS token (ticket edit dialog)
+  version       Int      @default(1)
+  center        Center?  @relation(fields: [centerId], references: [id])
+  serial        InventorySerial? @relation(fields: [serialNumber], references: [serialNumber])
+  businessUnit  BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  logs          ServiceTicketLog[]
+  @@index([businessUnitId, status])
+  @@index([businessUnitId, warrantyStatus, status])
+  @@index([serialNumber])
+  @@index([centerId])
+}
+
+// ============ Service Ticket Logs ============
+model ServiceTicketLog {
+  id            String   @id @default(cuid())
+  ticketId      String
+  action        String   // created, status_changed, assigned, resolved, note
+  details       String   @default("{}") // JSON
+  createdByName String?
+  createdAt     DateTime @default(now())
+  ticket        ServiceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  @@index([ticketId])
+}
+
+// ============ Partner Price List (لیست قیمت همکاران) ============
+// قیمت پلکانی: برای هر محصول چند ردیف minQty → price + کمیسیون
+model PartnerPrice {
+  id                String   @id @default(cuid())
+  productCode       String
+  minQty            Float    @default(1)   // حداقل تعداد این پلکان
+  price             Float    @default(0)   // قیمت همکار
+  discountPercent   Float    @default(0)   // تخفیف نسبت به قیمت عمومی
+  commissionPercent Float    @default(0)   // کمیسیون همکار/نماینده
+  note              String   @default("")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  // v2.25.0 — numeric CAS token (pricing dialog + active toggle)
+  version           Int      @default(1)
+  @@index([productCode, active])
+}
+
+// ============ Loyalty Transactions (باشگاه مشتریان) ============
+// reason: purchase (خرید) | redeem (استفاده) | manual (دستی) | referral | adjustment
+model LoyaltyTransaction {
+  id              String   @id @default(cuid())
+  centerId        String
+  points          Int      @default(0) // مثبت = کسب، منفی = استفاده
+  reason          String   @default("manual")
+  note            String   @default("")
+  documentNumber  String?  // شمارهٔ سند مرتبط
+  createdById     String?
+  createdByName   String?
+  createdAt       DateTime @default(now())
+  center          Center   @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  @@index([centerId, createdAt])
+}
+
+// ============ Inventory Serial History ============
+model InventorySerialHistory {
+  id            String   @id @default(cuid())
+  serialId      String
+  action        String   // entered, sold, returned, adjusted
+  fromStatus    String?
+  toStatus      String?
+  description   String   @default("")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  serial        InventorySerial @relation(fields: [serialId], references: [id], onDelete: Cascade)
+  @@index([serialId])
+}
+
+// ============ Notes ============
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  content   String   @default("")
+  color     String   @default("default")
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+// ============ Letters (Mailbox) ============
+model Letter {
+  id        String   @id @default(cuid())
+  subject   String
+  body      String   @default("")
+  senderId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recipients LetterRecipient[]
+}
+
+// ============ Letter Recipients ============
+model LetterRecipient {
+  id        String   @id @default(cuid())
+  letterId  String
+  userId    String
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  letter    Letter   @relation(fields: [letterId], references: [id], onDelete: Cascade)
+  @@index([letterId])
+  @@index([userId, isRead])
+}
+
+// ============ Files ============
+model File {
+  id          String   @id @default(cuid())
+  originalName String
+  storedName  String   @unique
+  mimeType    String   @default("application/octet-stream")
+  size        Int      @default(0)
+  checksum    String?  // SHA-256 hex — verified again on every download (P1-2)
+  centerId    String?
+  category    String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  // v2.58.3 (finding 9) — lifecycle: 'pending' (row registered, bytes
+  // not yet durable) | 'committed' (bytes on disk, downloadable) |
+  // 'deleting' (v2.58.4, external audit F06 — a delete in flight: the
+  // bytes are not settled yet, so the tracking row MUST stay until the
+  // sweeper or a retry completes the deletion; never downloadable).
+  // Stale pending rows are identifiable + recoverable (sweeper);
+  // pending files are NEVER downloadable.
+  status      String   @default("committed")
+  // v2.34.7 — back-relation for Activity.voiceNoteFile
+  voiceNoteActivities Activity[] @relation("ActivityVoiceNote")
+  @@index([centerId])
+  @@index([createdById])
+  @@index([status])
+}
+
+// ============ Sessions ============
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  displayName  String   @default("")
+  browserName  String   @default("")
+  ipHash       String   @default("")
+  // v2.34.6 — admin impersonation: set on the TARGET user's session when an
+  // admin temporarily operates their account. Null on normal sessions. The
+  // value is the admin's userId (FK-free by design; admin users are never
+  // hard-deleted). Sessions with this flag cannot themselves impersonate.
+  impersonatedBy String?
+  lastSeenAt   DateTime @default(now())
+  revokedAt   DateTime?
+  createdAt    DateTime @default(now())
+  @@index([userId, revokedAt])
+  @@index([lastSeenAt])
+}
+
+// ============ Login Attempts ============
+model LoginAttempt {
+  id            String   @id @default(cuid())
+  attemptKey    String   @unique
+  failures      Int      @default(0)
+  firstFailedAt DateTime?
+  lastFailedAt  DateTime?
+  blockedUntil  DateTime?
+  createdAt     DateTime @default(now())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+// ============ Audit Events ============
+model AuditEvent {
+  id        String   @id @default(cuid())
+  eventType  String
+  category   String   @default("")
+  subject    String   @default("")
+  details    String   @default("")
+  userId     String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  @@index([createdAt])
+  @@index([userId])
+  @@index([eventType])
+}
+
+// ============ Meta (Key-Value Store) ============
+model Meta {
+  key       String   @id
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+// ============ Sales Reports ============
+model SalesReport {
+  id              String   @id @default(cuid())
+  businessUnitId  String   @default("production")
+  companyId       String?
+  reportDate      String
+  totalSales      Float    @default(0)
+  totalInvoices   Int      @default(0)
+  totalProducts   Int      @default(0)
+  data            String   @default("{}") // JSON: extra stats
+  createdAt       DateTime @default(now())
+  company         Company? @relation(fields: [companyId], references: [id])
+  @@index([businessUnitId, reportDate])
+}
+
+// ============ Production Purchase Requests ============
+model ProductionPurchaseRequest {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  status      String   @default("pending") // pending, approved, rejected, ordered
+  requestedBy String?
+  // v2.25.0 — company ownership (nullable): production purchase requests
+  // are an internal SHARED queue by design (the production business unit
+  // serves the whole holding), so existing rows stay null = visible to
+  // every user. The column enables per-company requests if the workflow
+  // ever needs them; the route predicate mirrors the optional semantics.
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company? @relation("PurchaseRequestCompany", fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+// ============ Territory ============
+model Territory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  province  String?
+  userIds   String   @default("[]") // JSON array
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============ Hesabfa Links ============
+model HesabfaCenterLink {
+  id            String   @id @default(cuid())
+  centerId      String   @unique
+  hesabfaId     String
+  syncedAt      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model HesabfaProductLink {
+  id            String   @id @default(cuid())
+  productCode   String   @unique
+  hesabfaId     String
+  syncedAt      DateTime?
+  createdAt     DateTime @default(now())
+}
+
+model HesabfaJob {
+  id        String   @id @default(cuid())
+  jobType   String
+  status    String   @default("pending")
+  companyId String?  // v2.33.0 — independent per-company sync jobs
+  payload   String   @default("{}")
+  result    String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status])
+  @@index([companyId, status])
+}
+
+model HesabfaWebhookEvent {
+  id        String   @id @default(cuid())
+  eventType  String
+  payload   String   @default("{}")
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([processed])
+}
+
+model HesabfaReviewItem {
+  id        String   @id @default(cuid())
+  jobId     String
+  itemType   String
+  action    String   @default("create")
+  data      String   @default("{}")
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  @@index([jobId])
+  @@index([status])
+}
+
+// ============ Hesabfa Read-Only Integration (v2.32.0 / v2.33.0) ============
+// One Hesabfa business (apiKey + loginToken) per CRM company — each company
+// syncs ITS OWN items/warehouses/inventory. Company → Hesabfa Connection.
+// One-way only: Hesabfa → CRM (the client enforces a read-path whitelist).
+model HesabfaConnection {
+  id             String    @id @default(cuid())
+  companyId      String    @unique
+  apiKey         String
+  loginToken     String
+  baseUrl        String    @default("https://api.hesabfa.com/v1")
+  active         Boolean   @default(true)
+  businessName   String?   // echoed by getBusinessInfo on test-connection
+  lastTestAt     DateTime?
+  lastTestOk     Boolean?
+  lastTestMsg    String?
+  lastSyncAt     DateTime?
+  lastSyncStats  String    @default("{}") // JSON summary of the last run
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  warehouseLinks HesabfaWarehouseLink[]
+}
+
+// Per-company warehouse notebook: every warehouse discovered during sync is
+// recorded here (structural independence — same warehouse code in two
+// companies never collides because the key is (companyId, warehouseCode)).
+model HesabfaWarehouseLink {
+  id            String   @id @default(cuid())
+  companyId     String
+  warehouseCode String
+  warehouseName String
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  connection    HesabfaConnection @relation(fields: [companyId], references: [companyId], onDelete: Cascade)
+  @@unique([companyId, warehouseCode])
+}
+
+// Latest-state inventory snapshot: Company → Warehouse → Item → Quantity.
+// warehouseCode "0" carries the TOTAL quantity row (Hesabfa semantics).
+// Rewrite-per-company inside one transaction — a failed company never
+// corrupts another company's snapshot.
+model HesabfaInventorySnapshot {
+  id            String   @id @default(cuid())
+  companyId     String
+  itemCode      String
+  itemName      String
+  unit          String   @default("")
+  warehouseCode String
+  warehouseName String   @default("")
+  quantity      Float    @default(0)
+  fetchedAt     DateTime @default(now())
+  @@unique([companyId, itemCode, warehouseCode])
+  @@index([companyId, warehouseCode])
+  @@index([itemCode])
+}
+
+// ═══ v2.57.0 (round 83) — full read/sync cache per upload/حسابفا.txt ═══
+// Item catalog cache (Sync کالاها): code, name, unit, prices — the
+// snapshot table above carries quantities only, this one the catalog.
+model HesabfaItem {
+  id           String   @id @default(cuid())
+  companyId    String
+  itemCode     String   // Hesabfa Code (same key the snapshot uses)
+  hesabfaId    Int      @default(0) // Hesabfa numeric Id
+  name         String   @default("")
+  barCode      String   @default("")
+  unit         String   @default("")
+  buyPrice     Float    @default(0)
+  sellPrice    Float    @default(0) // قیمت فروش (RetrievedSellPrice is not syncable — manual prices only)
+  categoryPath String   @default("")
+  active       Boolean  @default(true)
+  syncedAt     DateTime @default(now())
+  @@unique([companyId, itemCode])
+  @@index([companyId, active])
+}
+
+// Contacts cache (Sync مشتریان) incl. بدهکاری/بستانکاری balance
+// (positive = customer owes; negative = prepaid credit).
+model HesabfaContact {
+  id          String   @id @default(cuid())
+  companyId   String
+  hesabfaId   Int
+  code        String   @default("") // Hesabfa contact Code (legacy key)
+  name        String   @default("")
+  contactType Int      @default(0) // 1=حقیقی 2=حقوقی 99=جزء … (Hesabfa enums)
+  phone       String   @default("")
+  mobile      String   @default("")
+  email       String   @default("")
+  city        String   @default("")
+  province    String   @default("")
+  address     String   @default("")
+  nationalCode String  @default("")
+  balance     Float    @default(0) // بدهکاری (+) / بستانکاری (−)
+  syncedAt    DateTime @default(now())
+  @@unique([companyId, hesabfaId])
+  // v2.58.0 (audit 85-c) — code is the manual center-mapping key; duplicates
+  // would silently mis-route mapping (verified 0 duplicates before upgrade).
+  @@unique([companyId, code])
+}
+
+// Invoices cache (Sync فاکتورها) — READ ONLY. Type 0 = فروش, 1 = خرید
+// (legacy PHP mapping kept verbatim). Items JSON preserves the full
+// line set incl. serials found by the extractor; contact fields are
+// denormalized so the list view needs no join. No write path exists —
+// creating/editing Hesabfa invoices stays disabled pending approval.
+model HesabfaInvoice {
+  id            String   @id @default(cuid())
+  companyId     String
+  hesabfaId     Int
+  number        String   @default("") // شماره فاکتور
+  invoiceType   Int      @default(0) // 0 = فروش, 1 = خرید
+  date          String   @default("") // Jalali YYYY/MM/DD as Hesabfa returns
+  contactHesabfaId Int  @default(0)
+  contactCode   String   @default("")
+  contactName   String   @default("")
+  totalAmount   Float    @default(0)
+  paidAmount    Float    @default(0)
+  description   String   @default("")
+  itemsJson     String   @default("[]") // invoice line items (as received)
+  serialsJson   String   @default("[]") // serials detected by the extractor
+  syncedAt      DateTime @default(now())
+  @@unique([companyId, hesabfaId])
+  @@index([companyId, invoiceType, date])
+  @@index([companyId, contactHesabfaId])
+}
+
+// ============ Periodic Follow-ups ============
+model PeriodicFollowup {
+  id              String   @id @default(cuid())
+  companyId       String
+  centerId        String?
+  centerName      String
+  city            String?
+  personName      String
+  phone           String?
+  frequency       String   // weekly, biweekly, monthly, bimonthly
+  frequencyDays   Int      @default(30)
+  lastFollowupDate String?
+  nextFollowupDate String?
+  daysOverdue     Int      @default(0)
+  totalFollowups  Int      @default(0)
+  status          String   @default("upcoming") // overdue, today, upcoming, done
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  company         Company          @relation(fields: [companyId], references: [id])
+  center          Center?          @relation(fields: [centerId], references: [id])
+  history         FollowupHistory[]
+  notes           FollowupNote[]
+  @@index([companyId, status])
+  @@index([centerId])
+}
+
+// ============ Follow-up History ============
+model FollowupHistory {
+  id            String   @id @default(cuid())
+  followupId    String
+  followupDate  String
+  method        String   // phone, visit, whatsapp, email
+  result        String?
+  note          String?
+  createdAt     DateTime @default(now())
+  periodicFollowup PeriodicFollowup @relation(fields: [followupId], references: [id], onDelete: Cascade)
+  @@index([followupId])
+}
+
+// ============ Follow-up Notes ============
+model FollowupNote {
+  id         String   @id @default(cuid())
+  followupId String
+  text       String
+  createdAt  DateTime @default(now())
+  periodicFollowup PeriodicFollowup @relation(fields: [followupId], references: [id], onDelete: Cascade)
+  @@index([followupId])
+}
+
+// ════════════════════════════════════════════════════════════
+// ═══════════ AI Sales Intelligence (v2.27.0) ════════════════
+// هوش مصنوعی فروش و تحلیل مکالمات — تمام داده‌ها Company-Scoped
+// ════════════════════════════════════════════════════════════
+
+// ── Call Recording — ورود تماس + Pipeline پردازش ──
+// status: uploaded → queued → transcribing → analyzing → completed | failed
+model AiCallRecording {
+  id              String    @id @default(cuid())
+  companyId       String    // company ID (cuid) — tenant isolation, like Center.companyId
+  centerId        String?
+  contactId       String?
+  activityId      String?   // تماس ثبت‌شده مرتبط (Activity.isPhoneCall)
+  userId          String?   // کارشناس فروش (گوینده سمت شرکت)
+  direction       String    @default("outbound") // inbound | outbound
+  source          String    @default("manual-upload") // manual-upload | manual-transcript | telephony
+  provider        String    @default("") // telephony provider id (asterisk | 3cx | simotel | …)
+  externalId      String?   // شناسهٔ تماس در PBX — idempotency کلید webhook (v2.28.0)
+  status          String    @default("uploaded")
+  failReason      String    @default("")
+  retryCount      Int       @default(0)
+  // v2.58.3 (finding 10) — processing lease: claimed workers set a
+  // deadline; a crashed worker leaves an EXPIRED lease that the next
+  // claim recovers (atomic conditional update, no double processing).
+  leaseUntil      DateTime?
+  // v2.58.4 (external audit F07) — lease FENCING token: the claim mints
+  // a fresh token; every stage write and the final completion are
+  // conditional on it. A stale worker whose lease expired (and was
+  // re-granted to a newer one) matches ZERO rows on its fenced writes —
+  // it can no longer clobber the new owner's state.
+  leaseToken      String?
+  // v2.58.4 (external audit F07) — per-stage completion markers: a
+  // crashed run resumes EXACTLY the remaining stages (an existing
+  // action is NOT proof all actions were created; zero actions is a
+  // VALID completed result, distinct from "stage never ran").
+  actionsDone     Boolean   @default(false)
+  memoryDone      Boolean   @default(false)
+  coachingDone    Boolean   @default(false)
+  audioFileId     String?   // File.id — صوت روی دیسک
+  durationSec     Int       @default(0)
+  language        String    @default("fa")
+  consent         String    @default("unknown") // granted | denied | not-required | unknown
+  retentionUntil  DateTime?
+  title           String    @default("") // عنوان دلخواه کاربر
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  center          Center?        @relation(fields: [centerId], references: [id])
+  contact         CenterContact? @relation(fields: [contactId], references: [id])
+  activity        Activity?      @relation(fields: [activityId], references: [id])
+  rep             User?          @relation("AiCallRep", fields: [userId], references: [id])
+  transcript      AiCallTranscript?
+  analyses        AiCallAnalysis[]
+  coachInsights   AiCoachInsight[]
+  @@index([companyId, status])
+  @@index([centerId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@unique([provider, externalId]) // v2.47.0 — webhook idempotency is a CONSTRAINT, not a findFirst race
+}
+
+// ── Call Transcript — خروجی STT با Segmentهای گوینده ──
+model AiCallTranscript {
+  id          String   @id @default(cuid())
+  recordingId String   @unique
+  sttProvider String   @default("")
+  language    String   @default("fa")
+  fullText    String   @default("")
+  segments    String   @default("[]") // JSON: [{speaker:'rep'|'customer'|'other', startSec, endSec, text}]
+  confidence  Float    @default(0)
+  wordCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  recording   AiCallRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+}
+
+// ── Call Analysis — استخراج ساختاریافته LLM (Grounded) ──
+model AiCallAnalysis {
+  id              String   @id @default(cuid())
+  recordingId     String
+  llmProvider     String   @default("")
+  model           String   @default("")
+  status          String   @default("completed") // completed | failed
+  summary         String   @default("")   // خلاصه تماس
+  topic           String   @default("")   // موضوع تماس
+  callReason      String   @default("")   // دلیل تماس
+  customerNeed    String   @default("")   // نیاز مشتری
+  customerProblems String  @default("[]") // JSON: string[]
+  products        String   @default("[]") // JSON: [{name, quantity?, note?}]
+  budget          String   @default("")
+  purchaseTimeframe String @default("")
+  intent          String   @default("")  // کلید Intent
+  temperature     String   @default("")  // cold | warm | hot | very_hot
+  conversionScore Int      @default(0)   // 0-100 — احتمال تبدیل
+  scoreReasons    String   @default("[]") // JSON: [{factor, impact:+1|-1, detail}] — Explainability
+  objections      String   @default("[]") // JSON: [{type, description, severity, resolved, recommendedResponse}]
+  commitments     String   @default("{}") // JSON: {rep: string[], customer: string[]}
+  openQuestions   String   @default("[]") // JSON: string[]
+  risks           String   @default("[]") // JSON: string[]
+  opportunities   String   @default("[]") // JSON: string[]
+  paymentTerms    String   @default("")
+  competitors     String   @default("[]") // JSON: string[]
+  decisionMakers  String   @default("[]") // JSON: [{name?, role?, type: decision_maker|influencer|user|gatekeeper|procurement}]
+  suggestedFollowupDate DateTime? // تاریخ پیشنهادی پیگیری (استاندارد میلادی)
+  suggestedFollowupReason String @default("")
+  stageSuggestion String   @default("")  // پیشنهاد مرحله کاریز
+  nextActions     String   @default("[]") // JSON snapshot: [{type, priority, dueAt, reason, confidence}]
+  confidence      Float    @default(0)   // اعتبار کلی استخراج
+  needsReview     Boolean  @default(false) // Confidence پایین → نیازمند بازبینی انسانی
+  inputTokens     Int      @default(0)
+  outputTokens    Int      @default(0)
+  createdAt       DateTime @default(now())
+  recording       AiCallRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  coachInsights   AiCoachInsight[]
+  @@index([recordingId, createdAt])
+}
+
+// ── Customer AI Memory — حافظه ساختاریافته (نه Transcript خام) ──
+model AiCustomerMemory {
+  id          String   @id @default(cuid())
+  companyId   String
+  centerId    String
+  contactId   String?  // حافظه سطح شخص (اختیاری)
+  summary     String   @default("")  // خلاصه رابطه
+  preferences String   @default("{}") // JSON: {preferredContactTime, communicationStyle, productInterests[], ...}
+  insights    String   @default("{}") // JSON: {purchaseHistory, openObjections[], competitors[], paymentBehavior, decisionMakers[], pastCommitments[], relationshipNotes[]}
+  source      String   @default("ai") // ai | manual
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  center      Center        @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  contact     CenterContact? @relation(fields: [contactId], references: [id])
+  @@index([centerId, contactId])
+  @@index([companyId])
+}
+
+// ── Next Best Action — با چرخه تأیید انسانی ──
+// status: suggested → approved → executed → completed | dismissed
+model AiNextAction {
+  id            String    @id @default(cuid())
+  companyId     String
+  centerId      String?
+  contactId     String?
+  recordingId   String?   // تماس مبدأ
+  analysisId    String?
+  type          String    // call|whatsapp|email|catalog|price|quotation|demo|meeting|technical_doc|decision_maker|payment|manager|close|mark_lost
+  title         String
+  detail        String    @default("")
+  priority      String    @default("medium") // high | medium | low
+  dueAt         DateTime?
+  reason        String    @default("")  // Explainability — چرا این اقدام؟
+  confidence    Float     @default(0)
+  status        String    @default("suggested")
+  approvedById  String?
+  approvedAt    DateTime?
+  executedActivityId String? // Activity ساخته‌شده
+  assignedTo    String?
+  createdById   String?
+  executedAt    DateTime?
+  completedAt   DateTime?
+  dismissedReason String  @default("")
+  // v2.58.4 (external audit F07) — stable per-recording identity
+  // ("<recordingId>#<index>"): action creation is RESUMABLE — a crash
+  // after the first of three actions re-runs only the missing two
+  // (existing keys are skipped; duplicates impossible via the UNIQUE
+  // index). NULL for actions not derived from a call (manual).
+  dedupeKey     String?    @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  center        Center?        @relation(fields: [centerId], references: [id])
+  contact       CenterContact? @relation(fields: [contactId], references: [id])
+  assignee      User?          @relation("AiNextActionAssignee", fields: [assignedTo], references: [id])
+  @@index([companyId, status])
+  @@index([assignedTo, status])
+  @@index([dueAt, status])
+}
+
+// ── Sales Coach Insight — ارزیابی ۱۳ معیاره هر تماس ──
+model AiCoachInsight {
+  id             String   @id @default(cuid())
+  userId         String   // کارشناس ارزیابی‌شده
+  recordingId    String
+  analysisId     String?
+  qualityScore   Int      @default(0) // 0-100
+  scores         String   @default("{}") // JSON: {opening, rapport, needDiscovery, qualification, questionQuality, presentation, listening, objectionHandling, negotiation, closing, nextAction, professionalism, followupQuality} هر یک 0-100
+  strengths      String   @default("[]") // JSON: string[]
+  improvements   String   @default("[]") // JSON: string[]
+  mistakes       String   @default("[]") // JSON: string[]
+  recommendations String  @default("[]") // JSON: string[]
+  createdAt      DateTime @default(now())
+  user           User            @relation(fields: [userId], references: [id])
+  recording      AiCallRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  analysis       AiCallAnalysis? @relation(fields: [analysisId], references: [id])
+  @@index([userId, createdAt])
+}
+
+// ── AI Usage Log — کنترل هزینه ──
+model AiUsageLog {
+  id                String   @id @default(cuid())
+  companyId         String
+  userId            String?
+  feature           String   // call_analysis | coaching | brief | memory | playbook
+  provider          String
+  model             String
+  inputTokens       Int      @default(0)
+  outputTokens      Int      @default(0)
+  audioSeconds      Int      @default(0)
+  estimatedCostRial Float    @default(0)
+  status            String   @default("success") // success | failed
+  createdAt         DateTime @default(now())
+  @@index([companyId, createdAt])
+  @@index([feature, createdAt])
+}
+
+// ── Sales Playbook — پلی‌بوک قابل مدیریت ──
+model AiPlaybook {
+  id                String   @id @default(cuid())
+  companyId         String
+  category          String   // opening|discovery|qualification|objection|pitch|closing|followup
+  title             String
+  content           String
+  tags              String   @default("[]") // JSON: string[]
+  source            String   @default("manual") // manual | winning-mined | ai-suggested
+  sourceRecordingId String?
+  isActive          Boolean  @default(true)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@index([companyId, category])
+}

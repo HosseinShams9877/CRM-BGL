@@ -1,0 +1,687 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* v2.26.0 — Vazirmatn is served LOCALLY (public/fonts) so the CRM has
+   zero runtime dependency on an external CDN (offline-ready, no font
+   flash after first visit, works behind air-gapped LAN deployments).
+   Files are the official v33.003 webfonts (rastikerdar/vazirmatn). */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Vazirmatn', 'Tahoma', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.98 0.002 250);
+  --foreground: oklch(0.17 0.02 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.17 0.02 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.17 0.02 260);
+  --primary: oklch(0.45 0.18 260);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.95 0.01 260);
+  --secondary-foreground: oklch(0.25 0.03 260);
+  --muted: oklch(0.95 0.01 260);
+  --muted-foreground: oklch(0.5 0.02 260);
+  --accent: oklch(0.93 0.02 260);
+  --accent-foreground: oklch(0.25 0.03 260);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.9 0.01 260);
+  --input: oklch(0.9 0.01 260);
+  --ring: oklch(0.45 0.18 260);
+  --chart-1: oklch(0.45 0.18 260);
+  --chart-2: oklch(0.6 0.15 160);
+  --chart-3: oklch(0.55 0.2 30);
+  --chart-4: oklch(0.65 0.15 300);
+  --chart-5: oklch(0.7 0.15 80);
+  --sidebar: oklch(0.22 0.04 260);
+  --sidebar-foreground: oklch(0.9 0.01 260);
+  --sidebar-primary: oklch(0.6 0.18 260);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.3 0.06 260);
+  --sidebar-accent-foreground: oklch(0.95 0.01 260);
+  --sidebar-border: oklch(0.3 0.06 260);
+  --sidebar-ring: oklch(0.6 0.18 260);
+  --success: oklch(0.55 0.17 145);
+  --warning: oklch(0.7 0.18 80);
+
+  /* Company colors */
+  --company-color: #2E2A5C;
+  --company-accent: #1F8B7D;
+  --company-bg: #f0eff5;
+  --company-bg-dark: #2E2A5C;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    font-feature-settings: 'ss01', 'ss02';
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.7 0.1 260) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: oklch(0.7 0.1 260);
+    border-radius: 3px;
+  }
+}
+
+/* ===== LOGIN ANIMATIONS ===== */
+@keyframes loginGradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes logoDraw {
+  0% { stroke-dashoffset: 200; opacity: 0; }
+  20% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+
+@keyframes logoFadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ringPulse {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+@keyframes cardFloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  0% { opacity: 0; transform: translateX(30px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  0% { opacity: 0; transform: translateX(-30px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes barGrow {
+  0% { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Company-switch progress bar (v2.26.0) — a thin calm strip that slides
+   across the top while the new company's module tree remounts. */
+@keyframes companySwitchBar {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-300%); }
+}
+
+.animate-company-switch-bar {
+  animation: companySwitchBar 0.9s ease-in-out infinite;
+}
+
+.animate-login-gradient {
+  animation: loginGradient 8s ease infinite;
+  background-size: 200% 200%;
+}
+
+.animate-logo-draw {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: logoDraw 2s ease-out forwards;
+}
+
+.animate-logo-fade {
+  animation: logoFadeIn 1s ease-out 0.8s forwards;
+  opacity: 0;
+}
+
+.animate-ring-pulse {
+  animation: ringPulse 3s ease-in-out infinite;
+}
+
+.animate-card-float {
+  animation: cardFloat 6s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* v2.31.5 — landscape login promo panel (aside, lg+ only): staggered
+   entrance reusing the existing fadeInUp keyframes. fill-mode "both" is
+   required so elements stay invisible during their animation-delay
+   (with "forwards" alone they would flash visible, then jump to
+   opacity:0 when the delayed animation finally starts). */
+.promo-enter {
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out both;
+}
+.promo-enter-1 { animation-delay: 0.1s; }
+.promo-enter-2 { animation-delay: 0.3s; }
+.promo-enter-3 { animation-delay: 0.5s; }
+.promo-feature {
+  opacity: 0;
+  animation: fadeInUp 0.55s ease-out both;
+}
+.promo-feature:nth-child(1) { animation-delay: 0.55s; }
+.promo-feature:nth-child(2) { animation-delay: 0.62s; }
+.promo-feature:nth-child(3) { animation-delay: 0.69s; }
+.promo-feature:nth-child(4) { animation-delay: 0.76s; }
+.promo-feature:nth-child(5) { animation-delay: 0.83s; }
+.promo-feature:nth-child(6) { animation-delay: 0.9s; }
+
+.animate-slide-right {
+  animation: slideInRight 0.4s ease-out forwards;
+}
+
+.animate-slide-left {
+  animation: slideInLeft 0.4s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out forwards;
+}
+
+.animate-bar-grow {
+  transform-origin: bottom;
+  animation: barGrow 0.8s ease-out forwards;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* ===== ACCESSIBILITY: keyboard focus ring (v2.26.0) =====
+   Every interactive element gets a clearly visible focus ring; the
+   outline is never removed without a replacement. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--company-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ===== ACCESSIBILITY: prefers-reduced-motion (v2.26.0) =====
+   Users who ask the OS for reduced motion get every non-essential
+   animation disabled: login gradient/float/particles/rings, card
+   entrances, dropdown scale-ins, spinners keep meaning but stop
+   looping where purely decorative. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-login-gradient,
+  .animate-card-float,
+  .animate-ring-pulse,
+  .animate-shimmer {
+    animation: none !important;
+  }
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Delay utilities */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+.delay-700 { animation-delay: 700ms; }
+.delay-800 { animation-delay: 800ms; }
+
+/* ════════════════════════════════════════════════════════════
+   DARK MODE (v2.26.0)
+   next-themes toggles the `dark` class on <html>. Because the
+   app predates theming and hardcodes light utility classes in
+   ~25 components, the pragmatic low-risk strategy is:
+     1. token overrides (.dark :root vars) for Radix primitives
+        (dialogs, popovers, selects, tooltips → follow tokens),
+     2. remap the handful of most-used light utilities under
+        `.dark` so the main surfaces flip coherently.
+   Print views are explicitly reverted to light below.
+   ════════════════════════════════════════════════════════════ */
+.dark {
+  --background: oklch(0.17 0.015 260);
+  --foreground: oklch(0.92 0.005 260);
+  --card: oklch(0.21 0.02 260);
+  --card-foreground: oklch(0.92 0.005 260);
+  --popover: oklch(0.21 0.02 260);
+  --popover-foreground: oklch(0.92 0.005 260);
+  --secondary: oklch(0.26 0.02 260);
+  --secondary-foreground: oklch(0.9 0.005 260);
+  --muted: oklch(0.26 0.02 260);
+  --muted-foreground: oklch(0.68 0.01 260);
+  --accent: oklch(0.28 0.025 260);
+  --accent-foreground: oklch(0.92 0.005 260);
+  --border: oklch(0.3 0.02 260);
+  --input: oklch(0.3 0.02 260);
+  --ring: oklch(0.6 0.12 170);
+  --sidebar: oklch(0.17 0.02 260);
+  --sidebar-foreground: oklch(0.9 0.01 260);
+  --company-bg: #171530;
+}
+
+/* Utility remaps — the app's most common hardcoded light classes.
+   Scoped to .dark so light mode is byte-for-byte identical. */
+.dark .bg-white {
+  background-color: oklch(0.21 0.02 260) !important;
+}
+.dark .bg-gray-50 {
+  background-color: oklch(0.17 0.015 260) !important;
+}
+.dark .bg-gray-100 {
+  background-color: oklch(0.26 0.02 260) !important;
+}
+.dark .bg-gray-100\/80 {
+  background-color: oklch(0.26 0.02 260 / 0.8) !important;
+}
+.dark .text-gray-900 { color: oklch(0.93 0.005 260) !important; }
+.dark .text-gray-800 { color: oklch(0.88 0.005 260) !important; }
+.dark .text-gray-700 { color: oklch(0.8 0.008 260) !important; }
+.dark .text-gray-600 { color: oklch(0.72 0.01 260) !important; }
+.dark .border-gray-100 { border-color: oklch(0.28 0.015 260) !important; }
+.dark .border-gray-200 { border-color: oklch(0.3 0.02 260) !important; }
+.dark .hover\:bg-gray-50:hover { background-color: oklch(0.26 0.02 260) !important; }
+.dark .hover\:bg-gray-100:hover { background-color: oklch(0.3 0.025 260) !important; }
+
+/* Print (and any explicitly light-locked surface) always reverts to
+   the light palette — invoices/proformas must print on white. */
+@media print {
+  .dark .bg-white { background-color: #fff !important; }
+  .dark .bg-gray-50 { background-color: #f9fafb !important; }
+  .dark .bg-gray-100 { background-color: #f3f4f6 !important; }
+  .dark .text-gray-900 { color: #111827 !important; }
+  .dark .text-gray-800 { color: #1f2937 !important; }
+  .dark .text-gray-700 { color: #374151 !important; }
+  .dark .text-gray-600 { color: #4b5563 !important; }
+  .dark .border-gray-100 { border-color: #f3f4f6 !important; }
+  .dark .border-gray-200 { border-color: #e5e7eb !important; }
+}
+
+/* Light-locked surfaces: elements that must stay light in dark mode
+   (e.g. official logo cards) can opt out with .stay-light */
+.dark .stay-light {
+  background-color: #fff;
+  color: #111827;
+}
+
+/* >>> v2.26.1 dark remaps (generated) >>> */
+/* Auto-generated: closes the dark-mode coverage gap for the app's
+   hardcoded light utilities. Same family/strategy as the v2.26 remaps:
+   tints -> dark tinted surfaces, 600/700 text -> readable bright,
+   faint borders -> dark borders. Vivid solids (bg-teal-500 buttons,
+   strong borders) intentionally keep their identity. */
+.dark .bg-amber-100 { background-color: oklch(0.25 0.045 80) !important; }
+.dark .bg-amber-50 { background-color: oklch(0.25 0.045 80) !important; }
+.dark .bg-amber-50\/50 { background-color: oklch(0.25 0.045 80 / 0.5) !important; }
+.dark .bg-amber-50\/70 { background-color: oklch(0.25 0.045 80 / 0.7) !important; }
+.dark .bg-blue-50 { background-color: oklch(0.25 0.045 260) !important; }
+.dark .bg-emerald-100 { background-color: oklch(0.25 0.045 163) !important; }
+.dark .bg-emerald-50 { background-color: oklch(0.25 0.045 163) !important; }
+.dark .bg-green-100 { background-color: oklch(0.25 0.045 150) !important; }
+.dark .bg-green-50 { background-color: oklch(0.25 0.045 150) !important; }
+.dark .bg-green-50\/50 { background-color: oklch(0.25 0.045 150 / 0.5) !important; }
+.dark .bg-indigo-50 { background-color: oklch(0.25 0.045 275) !important; }
+.dark .bg-orange-100 { background-color: oklch(0.25 0.045 55) !important; }
+.dark .bg-orange-50 { background-color: oklch(0.25 0.045 55) !important; }
+.dark .bg-red-100 { background-color: oklch(0.25 0.045 27) !important; }
+.dark .bg-red-50 { background-color: oklch(0.25 0.045 27) !important; }
+.dark .bg-teal-100 { background-color: oklch(0.25 0.045 175) !important; }
+.dark .bg-teal-50 { background-color: oklch(0.25 0.045 175) !important; }
+.dark .bg-teal-50\/30 { background-color: oklch(0.25 0.045 175 / 0.3) !important; }
+.dark .bg-teal-50\/40 { background-color: oklch(0.25 0.045 175 / 0.4) !important; }
+.dark .bg-teal-50\/50 { background-color: oklch(0.25 0.045 175 / 0.5) !important; }
+.dark .bg-teal-50\/60 { background-color: oklch(0.25 0.045 175 / 0.6) !important; }
+.dark .bg-violet-100 { background-color: oklch(0.25 0.045 300) !important; }
+.dark .bg-violet-50 { background-color: oklch(0.25 0.045 300) !important; }
+.dark .bg-violet-50\/30 { background-color: oklch(0.25 0.045 300 / 0.3) !important; }
+.dark .border-amber-100 { border-color: oklch(0.32 0.04 80) !important; }
+.dark .border-amber-200 { border-color: oklch(0.32 0.04 80) !important; }
+.dark .border-amber-300 { border-color: oklch(0.36 0.05 80) !important; }
+.dark .border-blue-100 { border-color: oklch(0.32 0.04 260) !important; }
+.dark .border-emerald-100 { border-color: oklch(0.32 0.04 163) !important; }
+.dark .border-emerald-200 { border-color: oklch(0.32 0.04 163) !important; }
+.dark .border-green-100 { border-color: oklch(0.32 0.04 150) !important; }
+.dark .border-green-300 { border-color: oklch(0.36 0.05 150) !important; }
+.dark .border-red-100 { border-color: oklch(0.32 0.04 27) !important; }
+.dark .border-red-200 { border-color: oklch(0.32 0.04 27) !important; }
+.dark .border-red-300 { border-color: oklch(0.36 0.05 27) !important; }
+.dark .border-teal-100 { border-color: oklch(0.32 0.04 175) !important; }
+.dark .border-teal-200 { border-color: oklch(0.32 0.04 175) !important; }
+.dark .border-teal-300 { border-color: oklch(0.36 0.05 175) !important; }
+.dark .border-violet-100 { border-color: oklch(0.32 0.04 300) !important; }
+.dark .text-amber-500 { color: oklch(0.75 0.12 80) !important; }
+.dark .text-amber-600 { color: oklch(0.78 0.11 80) !important; }
+.dark .text-amber-700 { color: oklch(0.78 0.11 80) !important; }
+.dark .text-amber-800 { color: oklch(0.78 0.11 80) !important; }
+.dark .text-amber-900 { color: oklch(0.78 0.11 80) !important; }
+.dark .text-blue-600 { color: oklch(0.78 0.11 260) !important; }
+.dark .text-blue-700 { color: oklch(0.78 0.11 260) !important; }
+.dark .text-cyan-600 { color: oklch(0.78 0.11 200) !important; }
+.dark .text-emerald-500 { color: oklch(0.75 0.12 163) !important; }
+.dark .text-emerald-600 { color: oklch(0.78 0.11 163) !important; }
+.dark .text-emerald-700 { color: oklch(0.78 0.11 163) !important; }
+.dark .text-green-500 { color: oklch(0.75 0.12 150) !important; }
+.dark .text-green-600 { color: oklch(0.78 0.11 150) !important; }
+.dark .text-green-700 { color: oklch(0.78 0.11 150) !important; }
+.dark .text-green-800 { color: oklch(0.78 0.11 150) !important; }
+.dark .text-indigo-600 { color: oklch(0.78 0.11 275) !important; }
+.dark .text-orange-600 { color: oklch(0.78 0.11 55) !important; }
+.dark .text-orange-700 { color: oklch(0.78 0.11 55) !important; }
+.dark .text-red-500 { color: oklch(0.75 0.12 27) !important; }
+.dark .text-red-600 { color: oklch(0.78 0.11 27) !important; }
+.dark .text-red-700 { color: oklch(0.78 0.11 27) !important; }
+.dark .text-red-800 { color: oklch(0.78 0.11 27) !important; }
+.dark .text-teal-600 { color: oklch(0.78 0.11 175) !important; }
+.dark .text-teal-700 { color: oklch(0.78 0.11 175) !important; }
+.dark .text-teal-800 { color: oklch(0.78 0.11 175) !important; }
+.dark .text-violet-600 { color: oklch(0.78 0.11 300) !important; }
+.dark .hover\:bg-amber-100:hover { background-color: oklch(0.25 0.045 80) !important; }
+.dark .hover\:bg-amber-50:hover { background-color: oklch(0.25 0.045 80) !important; }
+.dark .hover\:bg-emerald-100:hover { background-color: oklch(0.25 0.045 163) !important; }
+.dark .hover\:bg-emerald-50:hover { background-color: oklch(0.25 0.045 163) !important; }
+.dark .hover\:bg-red-100:hover { background-color: oklch(0.25 0.045 27) !important; }
+.dark .hover\:bg-red-50:hover { background-color: oklch(0.25 0.045 27) !important; }
+.dark .hover\:bg-teal-100:hover { background-color: oklch(0.25 0.045 175) !important; }
+.dark .hover\:bg-teal-50:hover { background-color: oklch(0.25 0.045 175) !important; }
+.dark .hover\:text-red-500:hover { color: oklch(0.75 0.12 27) !important; }
+.dark .hover\:text-red-600:hover { color: oklch(0.78 0.11 27) !important; }
+.dark .hover\:text-teal-600:hover { color: oklch(0.78 0.11 175) !important; }
+.dark .hover\:text-teal-700:hover { color: oklch(0.78 0.11 175) !important; }
+.dark .hover\:text-teal-900:hover { color: oklch(0.78 0.11 175) !important; }
+.dark .text-gray-500 { color: oklch(0.66 0.01 260) !important; }
+.dark .text-gray-400 { color: oklch(0.60 0.01 260) !important; }
+.dark .text-gray-300 { color: oklch(0.52 0.01 260) !important; }
+.dark .border-gray-50 { border-color: oklch(0.26 0.015 260) !important; }
+.dark .bg-gray-200 { background-color: oklch(0.30 0.025 260) !important; }
+.dark .hover\:bg-gray-200:hover { background-color: oklch(0.34 0.025 260) !important; }
+.dark .bg-gray-50\/30 { background-color: oklch(0.25 0.015 260 / 0.3) !important; }
+.dark .bg-gray-50\/40 { background-color: oklch(0.25 0.015 260 / 0.4) !important; }
+.dark .bg-gray-50\/50 { background-color: oklch(0.25 0.015 260 / 0.5) !important; }
+.dark .bg-gray-50\/60 { background-color: oklch(0.25 0.015 260 / 0.6) !important; }
+.dark .bg-gray-50\/80 { background-color: oklch(0.25 0.015 260 / 0.8) !important; }
+.dark .bg-gray-50\/50 { background-color: oklch(0.25 0.015 260 / 0.5) !important; }
+@media print {
+  .dark .bg-amber-100 { background-color: #fef3c7 !important; }
+  .dark .bg-amber-50 { background-color: #fffbeb !important; }
+  .dark .bg-amber-50\/50 { background-color: #fffbeb !important; }
+  .dark .bg-amber-50\/70 { background-color: #fffbeb !important; }
+  .dark .bg-blue-50 { background-color: #eff6ff !important; }
+  .dark .bg-emerald-100 { background-color: #d1fae5 !important; }
+  .dark .bg-emerald-50 { background-color: #ecfdf5 !important; }
+  .dark .bg-green-100 { background-color: #dcfce7 !important; }
+  .dark .bg-green-50 { background-color: #f0fdf4 !important; }
+  .dark .bg-green-50\/50 { background-color: #f0fdf4 !important; }
+  .dark .bg-indigo-50 { background-color: #eef2ff !important; }
+  .dark .bg-orange-100 { background-color: #ffedd5 !important; }
+  .dark .bg-orange-50 { background-color: #fff7ed !important; }
+  .dark .bg-red-100 { background-color: #fee2e2 !important; }
+  .dark .bg-red-50 { background-color: #fef2f2 !important; }
+  .dark .bg-teal-100 { background-color: #ccfbf1 !important; }
+  .dark .bg-teal-50 { background-color: #f0fdfa !important; }
+  .dark .bg-teal-50\/30 { background-color: #f0fdfa !important; }
+  .dark .bg-teal-50\/40 { background-color: #f0fdfa !important; }
+  .dark .bg-teal-50\/50 { background-color: #f0fdfa !important; }
+  .dark .bg-teal-50\/60 { background-color: #f0fdfa !important; }
+  .dark .bg-violet-100 { background-color: #ede9fe !important; }
+  .dark .bg-violet-50 { background-color: #f5f3ff !important; }
+  .dark .bg-violet-50\/30 { background-color: #f5f3ff !important; }
+  .dark .border-amber-100 { border-color: #fef3c7 !important; }
+  .dark .border-amber-200 { border-color: #fde68a !important; }
+  .dark .border-amber-300 { border-color: #fcd34d !important; }
+  .dark .border-blue-100 { border-color: #dbeafe !important; }
+  .dark .border-emerald-100 { border-color: #d1fae5 !important; }
+  .dark .border-emerald-200 { border-color: #a7f3d0 !important; }
+  .dark .border-green-100 { border-color: #dcfce7 !important; }
+  .dark .border-green-300 { border-color: #86efac !important; }
+  .dark .border-red-100 { border-color: #fee2e2 !important; }
+  .dark .border-red-200 { border-color: #fecaca !important; }
+  .dark .border-red-300 { border-color: #fca5a5 !important; }
+  .dark .border-teal-100 { border-color: #ccfbf1 !important; }
+  .dark .border-teal-200 { border-color: #99f6e4 !important; }
+  .dark .border-teal-300 { border-color: #5eead4 !important; }
+  .dark .border-violet-100 { border-color: #ede9fe !important; }
+  .dark .text-amber-500 { color: #f59e0b !important; }
+  .dark .text-amber-600 { color: #d97706 !important; }
+  .dark .text-amber-700 { color: #b45309 !important; }
+  .dark .text-amber-800 { color: #92400e !important; }
+  .dark .text-amber-900 { color: #78350f !important; }
+  .dark .text-blue-600 { color: #2563eb !important; }
+  .dark .text-blue-700 { color: #1d4ed8 !important; }
+  .dark .text-cyan-600 { color: #0891b2 !important; }
+  .dark .text-emerald-500 { color: #10b981 !important; }
+  .dark .text-emerald-600 { color: #059669 !important; }
+  .dark .text-emerald-700 { color: #047857 !important; }
+  .dark .text-green-500 { color: #22c55e !important; }
+  .dark .text-green-600 { color: #16a34a !important; }
+  .dark .text-green-700 { color: #15803d !important; }
+  .dark .text-green-800 { color: #166534 !important; }
+  .dark .text-indigo-600 { color: #4f46e5 !important; }
+  .dark .text-orange-600 { color: #ea580c !important; }
+  .dark .text-orange-700 { color: #c2410c !important; }
+  .dark .text-red-500 { color: #ef4444 !important; }
+  .dark .text-red-600 { color: #dc2626 !important; }
+  .dark .text-red-700 { color: #b91c1c !important; }
+  .dark .text-red-800 { color: #991b1b !important; }
+  .dark .text-teal-600 { color: #0d9488 !important; }
+  .dark .text-teal-700 { color: #0f766e !important; }
+  .dark .text-teal-800 { color: #115e59 !important; }
+  .dark .text-violet-600 { color: #7c3aed !important; }
+  .dark .text-gray-500 { color: #6b7280 !important; }
+  .dark .text-gray-400 { color: #9ca3af !important; }
+  .dark .text-gray-300 { color: #d1d5db !important; }
+  .dark .border-gray-50 { border-color: #f9fafb !important; }
+  .dark .bg-gray-200 { background-color: #e5e7eb !important; }
+}
+
+/* v2.26.1 — inline-style pastel surfaces (status chips, KPI cards, banners).
+   Inline styles beat normal class rules, but author !important beats
+   inline. React/DOM serializes hex to rgb(...), so we hook the rendered
+   style attribute. Gradients and brand solids never match these values. */
+.dark [style*="rgb(236, 253, 245)"] { background-color: oklch(0.25 0.045 163) !important; } /* #ecfdf5 */
+.dark [style*="rgb(255, 251, 235)"] { background-color: oklch(0.25 0.045 80) !important; }  /* #fffbeb */
+.dark [style*="rgb(238, 242, 255)"] { background-color: oklch(0.25 0.045 275) !important; } /* #eef2ff */
+.dark [style*="rgb(254, 242, 242)"] { background-color: oklch(0.25 0.045 27) !important; }  /* #fef2f2 */
+.dark [style*="rgb(236, 254, 255)"] { background-color: oklch(0.25 0.045 200) !important; } /* #ecfeff */
+.dark [style*="rgb(245, 243, 255)"] { background-color: oklch(0.25 0.045 300) !important; } /* #f5f3ff */
+.dark [style*="rgb(239, 246, 255)"] { background-color: oklch(0.25 0.045 260) !important; } /* #eff6ff */
+.dark [style*="rgb(243, 244, 246)"] { background-color: oklch(0.28 0.015 260) !important; } /* #f3f4f6 */
+.dark [style*="rgb(240, 253, 250)"] { background-color: oklch(0.25 0.045 175) !important; } /* #f0fdfa */
+.dark [style*="rgb(249, 250, 251)"] { background-color: oklch(0.25 0.015 260) !important; } /* #f9fafb */
+.dark [style*="rgb(250, 245, 255)"] { background-color: oklch(0.25 0.045 310) !important; } /* #faf5ff */
+.dark [style*="rgb(248, 250, 252)"] { background-color: oklch(0.25 0.015 260) !important; } /* #f8fafc */
+.dark [style*="rgb(230, 247, 244)"] { background-color: oklch(0.25 0.045 175) !important; } /* #e6f7f4 */
+.dark [style*="rgb(234, 243, 251)"] { background-color: oklch(0.25 0.045 260) !important; } /* #eaf3fb */
+.dark [style*="rgb(246, 238, 251)"] { background-color: oklch(0.25 0.045 300) !important; } /* #f6eefb */
+/* inline 600-level text/icon colors → readable brights on dark surfaces */
+.dark [style*="color: rgb(5, 150, 105)"]   { color: oklch(0.75 0.11 163) !important; } /* #059669 */
+.dark [style*="color: rgb(220, 38, 38)"]   { color: oklch(0.72 0.16 27) !important; }  /* #dc2626 */
+.dark [style*="color: rgb(217, 119, 6)"]   { color: oklch(0.78 0.12 80) !important; }  /* #d97706 */
+.dark [style*="color: rgb(8, 145, 178)"]   { color: oklch(0.75 0.1 200) !important; }  /* #0891b2 */
+.dark [style*="color: rgb(99, 102, 241)"]  { color: oklch(0.75 0.12 275) !important; } /* #6366f1 */
+.dark [style*="color: rgb(37, 99, 235)"]   { color: oklch(0.72 0.13 260) !important; } /* #2563eb */
+.dark [style*="color: rgb(124, 58, 237)"]  { color: oklch(0.72 0.14 300) !important; } /* #7c3aed */
+.dark [style*="color: rgb(107, 114, 128)"] { color: oklch(0.66 0.01 260) !important; } /* #6b7280 */
+.dark [style*="color: rgb(156, 163, 175)"] { color: oklch(0.6 0.01 260) !important; }  /* #9ca3af */
+.dark [style*="color: rgb(148, 163, 184)"] { color: oklch(0.6 0.01 260) !important; }  /* #94a3b8 */
+.dark [style*="color: rgb(180, 83, 9)"]    { color: oklch(0.75 0.11 80) !important; }  /* #b45309 */
+.dark [style*="color: rgb(147, 51, 234)"]  { color: oklch(0.72 0.14 310) !important; } /* #9333ea */
+.dark [style*="color: rgb(234, 88, 12)"]   { color: oklch(0.75 0.1 55) !important; }   /* #ea580c */
+
+@media print {
+  .dark [style*="rgb(236, 253, 245)"] { background-color: #ecfdf5 !important; }
+  .dark [style*="rgb(255, 251, 235)"] { background-color: #fffbeb !important; }
+  .dark [style*="rgb(238, 242, 255)"] { background-color: #eef2ff !important; }
+  .dark [style*="rgb(254, 242, 242)"] { background-color: #fef2f2 !important; }
+  .dark [style*="rgb(236, 254, 255)"] { background-color: #ecfeff !important; }
+  .dark [style*="rgb(245, 243, 255)"] { background-color: #f5f3ff !important; }
+  .dark [style*="rgb(239, 246, 255)"] { background-color: #eff6ff !important; }
+  .dark [style*="rgb(243, 244, 246)"] { background-color: #f3f4f6 !important; }
+  .dark [style*="rgb(240, 253, 250)"] { background-color: #f0fdfa !important; }
+  .dark [style*="rgb(249, 250, 251)"] { background-color: #f9fafb !important; }
+  .dark [style*="rgb(250, 245, 255)"] { background-color: #faf5ff !important; }
+  .dark [style*="rgb(248, 250, 252)"] { background-color: #f8fafc !important; }
+  .dark [style*="color: rgb(5, 150, 105)"]   { color: #059669 !important; }
+  .dark [style*="color: rgb(220, 38, 38)"]   { color: #dc2626 !important; }
+  .dark [style*="color: rgb(217, 119, 6)"]   { color: #d97706 !important; }
+  .dark [style*="color: rgb(8, 145, 178)"]   { color: #0891b2 !important; }
+  .dark [style*="color: rgb(99, 102, 241)"]  { color: #6366f1 !important; }
+  .dark [style*="color: rgb(37, 99, 235)"]   { color: #2563eb !important; }
+  .dark [style*="color: rgb(124, 58, 237)"]  { color: #7c3aed !important; }
+  .dark [style*="color: rgb(107, 114, 128)"] { color: #6b7280 !important; }
+  .dark [style*="color: rgb(156, 163, 175)"] { color: #9ca3af !important; }
+  .dark [style*="color: rgb(148, 163, 184)"] { color: #94a3b8 !important; }
+  .dark [style*="color: rgb(180, 83, 9)"]    { color: #b45309 !important; }
+  .dark [style*="color: rgb(147, 51, 234)"]  { color: #9333ea !important; }
+  .dark [style*="color: rgb(234, 88, 12)"]   { color: #ea580c !important; }
+}
+/* <<< v2.26.1 dark remaps (generated) <<< */
+
+/* ═══ v2.27.0 — AI Sales Intelligence dark-mode fixes ═══ */
+/* recharts renders tooltips with an inline white background that the
+   generated remap table above does not cover (it matches exact rgb
+   triplets from the legacy palette). Neutralize it for dark mode. */
+.dark .recharts-default-tooltip {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+.dark .recharts-default-tooltip .recharts-tooltip-label {
+  color: #e2e8f0 !important;
+}
+.dark .recharts-cartesian-axis-tick text {
+  fill: #94a3b8 !important;
+}

@@ -1,0 +1,67 @@
+# ═══════════════════════════════════════════════════════════════
+#  BGL CRM — systemd service (v2.29.0)
+#
+#  INSTALL (Ubuntu/Debian):
+#    sudo cp deploy/bgl-crm.service /etc/systemd/system/bgl-crm.service
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now bgl-crm
+#    systemctl status bgl-crm          # must say "active (running)"
+#    journalctl -u bgl-crm -f          # live logs
+#
+#  ADJUST BEFORE FIRST START:
+#    • User=bgl            → the dedicated non-root user you created
+#    • /opt/bgl-crm        → your install path (3 occurrences)
+#    • /usr/bin/node       → `which node` (nvm users: absolute path
+#      of the node binary, e.g. /home/bgl/.nvm/versions/node/v22.../bin/node)
+#
+#  WHY EnvironmentFile INSTEAD of a copied .env:
+#    The standalone server chdir()s into .next/standalone/ at boot and
+#    Next only auto-loads .env from ITS OWN working directory. Feeding
+#    the file through systemd is deterministic: the variables are in
+#    process.env before any Next code runs, regardless of chdir.
+#
+#  WHY HOSTNAME=127.0.0.1:
+#    The standalone server binds 0.0.0.0 by default — meaning port
+#    3000 would be reachable from the network, BYPASSING nginx and
+#    its TLS + header hygiene. Binding to loopback makes nginx the
+#    only possible entry point. (Keep ufw 3000 denied as belt-and-
+#    suspenders.)
+# ═══════════════════════════════════════════════════════════════
+
+[Unit]
+Description=BGL CRM (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+User=bgl
+Group=bgl
+
+WorkingDirectory=/opt/bgl-crm
+EnvironmentFile=/opt/bgl-crm/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+
+ExecStart=/usr/bin/node /opt/bgl-crm/.next/standalone/server.js
+Restart=always
+RestartSec=5
+
+# ── Hardening (all safe for this workload) ──
+NoNewPrivileges=true
+# Node must write: the SQLite DB dir, uploads dir, backups, and its
+# own .next. Everything else on the filesystem becomes read-only.
+ProtectSystem=strict
+ReadWritePaths=/opt/bgl-crm
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Clean shutdown: next-server flushes SQLite WAL on SIGTERM.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

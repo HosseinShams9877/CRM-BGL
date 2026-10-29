@@ -1,0 +1,60 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+.next/
+out/
+build/
+dist/
+
+# environment & secrets
+.env
+.env.local
+.env.production
+.env*.local
+
+# database
+*.db
+*.db-journal
+prisma/dev.db*
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# misc
+coverage/
+.turbo/
+
+# uploaded files (real storage, P1-2) — never commit user content
+storage/
+
+# runtime user data (v2.30.0 — backup snapshots land at project root)
+backups/
+
+# v2.43.0 — packaging staging trees (BGL-CRM-*) never belong in the repo
+staging/BGL-CRM-*/
+backups/
+
+# v2.58.10: install-time credential file (born on the installer machine)
+/FIRST-LOGIN.txt
+/FIRST-LOGIN*.txt
+
+# local operational storage & logs
+/storage/
+/logs/
+
+# v2.58.10: release outputs never belong in the repo (self-nesting zip lesson)
+/BGL-CRM-*.zip
+/BGL-CRM-*.zip.sha256
