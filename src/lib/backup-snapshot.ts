@@ -74,6 +74,43 @@ function sqlStringLiteral(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  v2.58.11 (Vercel deployment fix) — SQLite-only raw SQL guard
+//
+//  The snapshot/package machinery below is SQLite-native: `PRAGMA
+//  wal_checkpoint(TRUNCATE)`, `VACUUM INTO` and `PRAGMA quick_check` are
+//  SQLite statements with no PostgreSQL equivalent (Postgres has no file to
+//  copy and no quick_check). Against the production PostgreSQL datasource
+//  they used to blow up as a raw `syntax error at or near "PRAGMA"`
+//  (SQLSTATE 42601). Fail closed instead with an honest, actionable error;
+//  the JSON "export" action of /api/backup still works on every engine.
+// ═══════════════════════════════════════════════════════════
+function assertSqliteDatabase(): void {
+  const url = process.env.DATABASE_URL ?? '';
+  if (!url.startsWith('file:')) {
+    throw new Error(
+      'پشتیبان‌گیری فیزیکی (snapshot/package) فقط روی دیتابیس SQLite ممکن است؛ ' +
+        'دیتابیس تنظیم‌شده PostgreSQL است. از عملیات «خروجی JSON» (export) استفاده کنید، ' +
+        'یا برای پشتیبان PostgreSQL از ابزار pg_dump استفاده کنید.',
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  v2.58.11 (Vercel deployment fix) — TURBOPACK TRACING
+//
+//  Every fs call below targets backupDir(), which is resolved from
+//  env (BACKUP_DIR / STORAGE_DIR) at RUNTIME — it cannot be scoped
+//  statically. Turbopack's tracer therefore treats each of these as
+//  "dynamic filesystem access", falls back to tracing the WHOLE
+//  project, and copies it into .next/standalone (26 build warnings;
+//  .env and dev.db leak into the server bundle and postbuild's
+//  hygiene gate fails the build). The /*turbopackIgnore: true*/
+//  comments are Turbopack's documented opt-out for exactly this
+//  case: "this access is intentionally runtime-scoped — don't trace
+//  it". The accesses themselves are unchanged.
+// ════════════════════════════════════════════════════════════════
+
 async function countCoreTables(dbUrl: string): Promise<Record<string, number>> {
   // v2.58.1 (audit F7): counts are taken from THE SNAPSHOT ITSELF (a
   // dedicated probe connection), never from the live database — the live
@@ -104,6 +141,7 @@ async function countCoreTables(dbUrl: string): Promise<Record<string, number>> {
  * Persian error (a backup that "probably worked" is worse than a failure).
  */
 export async function createDbSnapshot(createdVia: 'api' | 'cli' = 'cli'): Promise<BackupManifest> {
+  assertSqliteDatabase();
   const dir = backupDir();
 
   // 1) fold the WAL into the main file so the snapshot is complete
@@ -154,13 +192,13 @@ export async function createDbSnapshot(createdVia: 'api' | 'cli' = 'cli'): Promi
 /** Rotate: delete the oldest snapshots (and their manifests) beyond `keep`. */
 export async function rotateSnapshots(keep = DEFAULT_KEEP): Promise<string[]> {
   const dir = backupDir();
-  if (!existsSync(dir)) return [];
-  const files = readdirSync(dir)
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) return [];
+  const files = readdirSync(/*turbopackIgnore: true*/ dir)
     .filter((n) => /^bgl-snapshot-.*\.db$/.test(n))
-    .map((name) => ({ name, mtimeMs: statSync(join(dir, name)).mtimeMs }));
+    .map((name) => ({ name, mtimeMs: statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs }));
   const { delete: doomed } = planRotation(files, keep);
   for (const name of doomed) {
-    try { unlinkSync(join(dir, name)); } catch { /* already gone */ }
+    try { unlinkSync(join(/*turbopackIgnore: true*/ dir, name)); } catch { /* already gone */ }
     try { unlinkSync(join(dir, `${name}.manifest.json`)); } catch { /* no manifest */ }
   }
   return doomed;
@@ -169,10 +207,10 @@ export async function rotateSnapshots(keep = DEFAULT_KEEP): Promise<string[]> {
 /** History for the settings UI: newest-first manifest entries. */
 export async function listSnapshots(limit = 20): Promise<BackupManifest[]> {
   const dir = backupDir();
-  if (!existsSync(dir)) return [];
-  const names = readdirSync(dir)
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) return [];
+  const names = readdirSync(/*turbopackIgnore: true*/ dir)
     .filter((n) => /^bgl-snapshot-.*\.db$/.test(n))
-    .map((name) => ({ name, mtimeMs: statSync(join(dir, name)).mtimeMs }))
+    .map((name) => ({ name, mtimeMs: statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs }))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
     .slice(0, limit)
     .map((f) => f.name);
@@ -184,9 +222,9 @@ export async function listSnapshots(limit = 20): Promise<BackupManifest[]> {
       // snapshot without a manifest still shows a minimal entry
       out.push({
         file: name,
-        bytes: statSync(join(dir, name)).size,
+        bytes: statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).size,
         sha256: '',
-        createdAt: new Date(statSync(join(dir, name)).mtimeMs).toISOString(),
+        createdAt: new Date(statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs).toISOString(),
         jalaliDate: '',
         appVersion: 'unknown',
         quickCheck: 'unknown',
@@ -268,6 +306,7 @@ export function packageDirName(now = new Date()): string {
 export async function createBackupPackage(
   createdVia: 'api' | 'cli' = 'cli',
 ): Promise<BackupPackageManifest> {
+  assertSqliteDatabase();
   const root = backupDir();
   mkdirSync(root, { recursive: true });
   const pkgDir = join(root, packageDirName());
@@ -344,10 +383,10 @@ export async function createBackupPackage(
 /** Newest-first list of package manifests (history UI + restore --latest). */
 export async function listPackages(limit = 20): Promise<BackupPackageManifest[]> {
   const dir = backupDir();
-  if (!existsSync(dir)) return [];
-  const names = readdirSync(dir)
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) return [];
+  const names = readdirSync(/*turbopackIgnore: true*/ dir)
     .filter((n) => /^bgl-package-\d{8}-\d{9}$/.test(n))
-    .map((name) => ({ name, mtimeMs: statSync(join(dir, name)).mtimeMs }))
+    .map((name) => ({ name, mtimeMs: statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs }))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
     .slice(0, limit)
     .map((f) => f.name);
@@ -361,7 +400,7 @@ export async function listPackages(limit = 20): Promise<BackupPackageManifest[]>
         format: 'bgl-crm-backup-package',
         version: 2,
         appVersion: 'unknown',
-        createdAt: new Date(statSync(join(dir, name)).mtimeMs).toISOString(),
+        createdAt: new Date(statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs).toISOString(),
         jalaliDate: '',
         createdVia: 'cli',
         database: { file: 'snapshot.db', bytes: 0, sha256: '', quickCheck: 'unknown', tableCounts: {} },
@@ -375,15 +414,15 @@ export async function listPackages(limit = 20): Promise<BackupPackageManifest[]>
 /** Rotate packages: keep the newest N package directories. */
 export async function rotatePackages(keep = DEFAULT_KEEP): Promise<string[]> {
   const dir = backupDir();
-  if (!existsSync(dir)) return [];
+  if (!existsSync(/*turbopackIgnore: true*/ dir)) return [];
   const { rmSync } = await import('fs');
-  const names = readdirSync(dir)
+  const names = readdirSync(/*turbopackIgnore: true*/ dir)
     .filter((n) => /^bgl-package-\d{8}-\d{9}$/.test(n))
-    .map((name) => ({ name, mtimeMs: statSync(join(dir, name)).mtimeMs }))
+    .map((name) => ({ name, mtimeMs: statSync(/*turbopackIgnore: true*/ join(/*turbopackIgnore: true*/ dir, name)).mtimeMs }))
     .sort((a, b) => b.mtimeMs - a.mtimeMs);
   const doomed = names.slice(Math.max(1, keep)).map((n) => n.name);
   for (const name of doomed) {
-    try { rmSync(join(dir, name), { recursive: true, force: true }); } catch { /* already gone */ }
+    try { rmSync(join(/*turbopackIgnore: true*/ dir, name), { recursive: true, force: true }); } catch { /* already gone */ }
   }
   return doomed;
 }

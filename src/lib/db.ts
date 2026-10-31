@@ -36,7 +36,13 @@ export const db =
 // writers; WAL lets reads proceed while the single writer works. The mode is
 // persistent in the database file header, so this is a cheap no-op read
 // after the first run.
-if (!globalForPrisma.prisma) {
+//
+// v2.58.11 (Vercel deployment fix) — PRAGMA is a SQLite-only statement.
+// This module is imported at page-data-collection time during `next build`,
+// and against the production PostgreSQL datasource the PRAGMA surfaces as
+// `syntax error at or near "PRAGMA"` (SQLSTATE 42601) in the build log.
+// Fire it ONLY when the configured datasource really is a SQLite file.
+if (!globalForPrisma.prisma && sqliteDatasourceUrl()) {
   db.$queryRawUnsafe('PRAGMA journal_mode=WAL')
     .then(() => undefined)
     .catch(() => undefined) // never block app startup on a pragma

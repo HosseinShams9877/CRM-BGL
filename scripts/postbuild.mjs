@@ -15,6 +15,15 @@ const root = process.cwd();
 const nextDir = join(root, '.next');
 const standalone = join(nextDir, 'standalone');
 
+// v2.58.11 (Vercel deployment fix) — on Vercel, next.config.ts sets
+// output:undefined (the standalone bundle breaks Vercel's Turbopack build),
+// so there is nothing to package here. Vercel produces the runtime artifacts
+// itself. Exiting 0 (instead of the error below) keeps `npm run build` green.
+if (process.env.VERCEL) {
+  console.log('[postbuild] Vercel build detected — standalone packaging skipped (Vercel builds its own output).');
+  process.exit(0);
+}
+
 if (!existsSync(standalone)) {
   console.error(
     '[postbuild] .next/standalone not found — did `next build` run with output: "standalone"?',
@@ -48,9 +57,11 @@ if (existsSync(publicDir)) {
 //  conservative around dynamic fs access). next.config.ts now excludes
 //  them at the trace level; THIS gate re-verifies the RESULT and fails
 //  closed: anything that must never ship is removed AND reported —
-//  and a leaked database, credential file, or env file FAILS THE
-//  BUILD (a hygiene bug to fix, not something to sweep under the
-//  carpet on the way to a release).
+//  and a leaked database or credential file FAILS THE BUILD (a hygiene
+//  bug to fix, not something to sweep under the carpet on the way to a
+//  release). v2.58.11: .env files moved from FATAL to STRIP — see the
+//  STRIP comment below for why (short: Next's standalone writer copies
+//  them by design; no consumer reads the bundled copy).
 // ════════════════════════════════════════════════════════════════
 import { readdirSync, rmSync, statSync } from 'node:fs';
 
@@ -74,7 +85,27 @@ function walk(dir) {
 const FATAL = [
   { test: (rel) => /^prisma\/.*\.db(\.|-|$)/.test(rel) || /(^|\/)dev\.db$/.test(rel) || /-wal$|-shm$/.test(rel) || /legacy-doubled-/.test(rel) || /\.test-runs/.test(rel), why: 'database file inside the standalone server bundle' },
   { test: (rel) => /^FIRST-LOGIN.*\.txt$/.test(rel) || /(^|\/)FIRST-LOGIN[^/]*\.txt$/.test(rel), why: 'plaintext credential file inside the standalone server bundle' },
-  { test: (rel) => /(^|\/)\.env(\.|$)/.test(rel) && !/\.env\.example$/.test(rel), why: 'environment/secret file inside the standalone server bundle' },
+];
+/**
+ * v2.58.11 (Vercel deployment fix) — STRIP (remove, do NOT fail): root
+ * .env files. Next's standalone writer copies them into .next/standalone
+ * BY DESIGN (so a bare `node server.js` could boot), and it does so even
+ * when the file trace is otherwise perfectly scoped — outputFileTracingExcludes
+ * has no effect on this copy. Failing the build here would break every
+ * legitimate build run from a tree that holds a .env, which is exactly
+ * the documented VPS flow (DEPLOYMENT.md: `npm run build` next to the
+ * production .env).
+ *
+ * Nothing reads the bundled copy anyway: scripts/start.mjs loads
+ * <projectRoot>/.env (the SOURCE tree, not the bundle), and real
+ * deployments inject env via systemd EnvironmentFile. So removing it
+ * costs no functionality and keeps secrets out of the shippable
+ * artifact — which is the whole point of this gate. Database and
+ * FIRST-LOGIN files stay FATAL: those indicate real build-tree drift,
+ * not Next's own output behavior.
+ */
+const STRIP = [
+  { test: (rel) => /(^|\/)\.env(\.|$)/.test(rel) && !/\.env\.example$/.test(rel), why: 'environment/secret file copied into the bundle by the Next standalone writer' },
 ];
 /** Removed with a warning (bloat, not secrets) — traced project files. */
 const REMOVE_ONLY = [
@@ -85,12 +116,20 @@ const REMOVE_ONLY = [
 
 const files = walk(standalone).map((p) => p.slice(standalone.length + 1).replace(/\\/g, '/'));
 let fatalCount = 0;
+let stripped = 0;
 let removed = 0;
 for (const rel of files) {
   const fatal = FATAL.find((f) => f.test(rel));
   if (fatal) {
     fatalCount += 1;
     console.error(`[postbuild] ✗ FATAL — ${rel} (${fatal.why}) — REMOVED, and the build FAILS`);
+    try { rmSync(join(standalone, rel), { force: true }); } catch { /* best effort */ }
+    continue;
+  }
+  const secret = STRIP.find((f) => f.test(rel));
+  if (secret) {
+    stripped += 1;
+    console.warn(`[postbuild] ⚠ stripped ${rel} from the standalone bundle (${secret.why})`);
     try { rmSync(join(standalone, rel), { force: true }); } catch { /* best effort */ }
     continue;
   }
@@ -112,6 +151,9 @@ for (const dir of ['tests', 'logs', 'storage']) {
 if (fatalCount > 0) {
   console.error(`[postbuild] ✗ ${fatalCount} forbidden artifact(s) leaked into .next/standalone — fix the build tree, do not ship this output.`);
   process.exit(1);
+}
+if (stripped > 0) {
+  console.warn(`[postbuild] ⚠ ${stripped} env/secret file(s) stripped from the standalone bundle (Next copies them by design; nothing reads the bundled copy)`);
 }
 if (removed > 0) {
   console.warn(`[postbuild] ⚠ ${removed} traced project file(s) removed from the standalone bundle (bloat only)`);

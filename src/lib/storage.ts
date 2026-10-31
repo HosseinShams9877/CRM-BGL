@@ -289,8 +289,13 @@ export function getStorageDir(): string {
   const v = process.env.STORAGE_DIR?.trim();
   if (v) {
     if (isAbsolutePath(v)) return v;
-    const rootAnchored = path.resolve(root, v);
-    const cwdAnchored = path.resolve(process.cwd(), v);
+    // v2.58.11 (Vercel deployment fix): these two resolves anchor a
+    // RUNTIME env path (STORAGE_DIR) — statically unscopable, so
+    // Turbopack would trace the whole project (and copy .env /
+    // dev.db into .next/standalone). /*turbopackIgnore: true*/ is
+    // its documented opt-out for intentionally dynamic access.
+    const rootAnchored = path.resolve(/*turbopackIgnore: true*/ root, v);
+    const cwdAnchored = path.resolve(/*turbopackIgnore: true*/ process.cwd(), v);
     // legacy data guard — keep the location that actually holds the data
     if (rootAnchored !== cwdAnchored && dirHasContent(cwdAnchored) && !dirHasContent(rootAnchored)) {
       return cwdAnchored;

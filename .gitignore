@@ -36,6 +36,7 @@ Thumbs.db
 # misc
 coverage/
 .turbo/
+tsconfig.tsbuildinfo
 
 # uploaded files (real storage, P1-2) — never commit user content
 storage/

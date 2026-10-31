@@ -1,8 +1,6 @@
--- v2.58.3 (round 88, finding 9) — File lifecycle states.
--- Every existing row is a completed, disk-backed record → 'committed'.
--- New uploads land as 'pending' between DB registration and the atomic
--- rename, and flip to 'committed' once the bytes are durable. Stale
--- pending rows (crash between the two writes) are identifiable and
--- recoverable by the sweeper; pending files are never downloadable.
-ALTER TABLE "File" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'committed';
-CREATE INDEX "File_status_idx" ON "File"("status");
+-- v2.58.11 (Vercel/PostgreSQL fix): this SQLite-era migration is superseded.
+-- The "File"."status" lifecycle column + its default/backfill are now
+-- materialized by 0_init/migration.sql, generated from schema.prisma via
+-- `prisma migrate diff --from-empty --to-schema-datamodel --script`.
+-- Replaying the original SQLite DDL against PostgreSQL fails, so this file
+-- is intentionally a no-op: the migration history stays replayable.

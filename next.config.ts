@@ -41,7 +41,16 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // v2.58.11 (Vercel deployment fix) — `output: "standalone"` is ONLY for
+  // the self-hosted package (scripts/start.mjs runs .next/standalone/server.js).
+  // On Vercel it breaks the build: with Turbopack, producing the standalone
+  // bundle skips writing `.next/next-server.js.nft.json`, which Vercel's
+  // onBuildComplete step then reads → `ENOENT ... next-server.js.nft.json`
+  // and the deployment fails AFTER `next build` itself succeeded. Vercel
+  // builds its own optimized output for the Next.js framework, so we opt out
+  // of the standalone tracing there. postbuild.mjs skips its standalone
+  // packaging step accordingly (same condition).
+  output: process.env.VERCEL ? undefined : "standalone",
   // v2.58.10 (final-review P0-2): the standalone trace used to drag the
   // WHOLE project in (dynamic fs access to prisma/, scripts/, src/ made
   // the tracer conservative) — a build run from a tree that happened to

@@ -1,6 +1,6 @@
--- v2.58.3 (round 88, finding 10) — atomic processing claim + lease for
--- AiCallRecording. A worker claims a recording by flipping its status
--- (updateMany, conditional) and takes a leaseUntil; a crash mid-pipeline
--- leaves an EXPIRED lease that the next claim can recover. NULL lease =
--- not being processed.
-ALTER TABLE "AiCallRecording" ADD COLUMN "leaseUntil" DATETIME;
+-- v2.58.11 (Vercel/PostgreSQL fix): this SQLite-era migration is superseded.
+-- The AiCallRecording lease/reservation columns it introduced are now
+-- materialized by 0_init/migration.sql, generated from schema.prisma via
+-- `prisma migrate diff --from-empty --to-schema-datamodel --script`.
+-- Replaying the original SQLite DDL against PostgreSQL fails, so this file
+-- is intentionally a no-op: the migration history stays replayable.

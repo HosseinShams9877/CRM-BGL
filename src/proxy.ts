@@ -3,7 +3,8 @@ import { rateLimit, RATE_TIERS, clientIpOf } from '@/lib/rate-limit';
 import { isAllowedOrigin } from '@/lib/origin-match';
 
 /**
- * Edge middleware guarding /api/* with two defense layers:
+ * Edge proxy (v2.58.11: renamed from middleware.ts per the Next.js 16
+ * "middleware → proxy" convention) guarding /api/* with two defense layers:
  *
  * 1. Rate limiting (P2-7) — sliding window per client IP, applied to ALL
  *    methods (GET included, for scraping defense). Auth endpoints get a
@@ -33,7 +34,7 @@ import { isAllowedOrigin } from '@/lib/origin-match';
 const EXEMPT_PATHS = ['/api/hesabfa/webhook', '/api/ai-sales/telephony/webhook'];
 const AUTH_PATHS = ['/api/auth'];
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { method } = req;
   const path = req.nextUrl.pathname;
   const ip = clientIpOf(req.headers);

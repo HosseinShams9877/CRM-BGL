@@ -1,7 +1,6 @@
--- AlterTable
-ALTER TABLE "Company" ADD COLUMN "printTemplate" TEXT;
-
--- Backfill (idempotent): the بازرگانی company starts on its dedicated
--- Lian template (sea-green + dark-purple, round-77 reference); every
--- other company stays null → 'bgl' default (zero visual regression).
-UPDATE "Company" SET "printTemplate" = 'lian' WHERE "slug" = 'bazargani' AND "printTemplate" IS NULL;
+-- v2.58.11 (Vercel/PostgreSQL fix): this SQLite-era migration is superseded.
+-- The full PostgreSQL schema (including "Company"."printTemplate") is now
+-- materialized by 0_init/migration.sql, generated from schema.prisma via
+-- `prisma migrate diff --from-empty --to-schema-datamodel --script`.
+-- Replaying the original SQLite DDL against PostgreSQL fails, so this file
+-- is intentionally a no-op: the migration history stays replayable.
