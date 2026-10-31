@@ -6,6 +6,7 @@ import { getAllowedCompanyIds, centerCompanyWhere, resolveScopedCompanyId } from
 import { centerTerritoryWhere, centerInTerritory, resolveTerritoryScope } from '@/lib/territory-scope';
 import { assertConcurrencyToken } from '@/lib/concurrency';
 import { apiErrorMessage, apiErrorStatus, ApiError } from '@/lib/api-error';
+import { parseJsonColumn } from '@/lib/json-utils';
 // v2.34.11 (round 58) — shared Persian search normalization. The local
 // normalizePersian/buildSearchKey moved to a lib so the list filter, the
 // combobox search and the stored searchKey column all agree on ZWNJ
@@ -67,25 +68,7 @@ function toJsonColumn(
 }
 
 /** Parse a stored JSON column with legacy double-encoding resilience. */
-export function parseJsonColumn(raw: string | null | undefined): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    const first: unknown = JSON.parse(raw);
-    if (first && typeof first === 'object' && !Array.isArray(first)) {
-      return first as Record<string, unknown>;
-    }
-    // legacy double-encoded row: first parse yields a string — unfold once more
-    if (typeof first === 'string') {
-      try {
-        const second: unknown = JSON.parse(first);
-        if (second && typeof second === 'object' && !Array.isArray(second)) {
-          return second as Record<string, unknown>;
-        }
-      } catch { /* not JSON — treat as empty */ }
-    }
-  } catch { /* not JSON — treat as empty */ }
-  return {};
-}
+
 
 // ── Main POST handler ──
 export async function POST(req: NextRequest) {
