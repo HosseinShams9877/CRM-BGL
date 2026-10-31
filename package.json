@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build && node scripts/postbuild.mjs",
+    "build": "next build --webpack && node scripts/postbuild.mjs",
     "start": "node scripts/start.mjs",
     "postinstall": "prisma generate",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
